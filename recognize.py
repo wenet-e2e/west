@@ -20,8 +20,7 @@ class DecodeArguments:
     max_new_tokens: int = 50
     num_beams: int = 1
     batch_size: int = 8
-    result_path: str = field(default=None,
-                           metadata={"help": "Path to result"})
+    result_path: str = field(default=None, metadata={"help": "Path to result"})
 
 
 def main():
@@ -39,10 +38,9 @@ def main():
     fid = open(decode_args.result_path, 'w', encoding='utf8')
     for item in tqdm(data_loader):
         generated_ids = model.generate(**item, decode_config=decode_args)
-        text = tokenizer.batch_decode(generated_ids,
-                                      skip_special_tokens=True)
+        text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
         for t in text:
-           fid.write(t + '\n')
+            fid.write(t + '\n')
     fid.close()
 
 

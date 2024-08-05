@@ -188,7 +188,6 @@ class SpeechLLM(PreTrainedModel):
             labels=labels,
         )
 
-
     @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
     def generate(
         self,
@@ -196,7 +195,7 @@ class SpeechLLM(PreTrainedModel):
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.LongTensor] = None,
         mel: torch.LongTensor = None,
-        decode_config = None,
+        decode_config=None,
     ):
         device = next(self.parameters()).device
         input_ids = input_ids.to(device)
