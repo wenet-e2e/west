@@ -43,7 +43,6 @@ def main():
                                       skip_special_tokens=True)
         for t in text:
            fid.write(t + '\n')
-        break
     fid.close()
 
 
