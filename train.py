@@ -239,7 +239,7 @@ def init_model(model_args):
     llm_model = AutoModelForCausalLM.from_pretrained(
         model_args.llm_model_name_or_path,
         config=config,
-        device_map='auto',
+        device_map=None,
         **model_load_kwargs,
     )
     encoder_dim = encoder.dims.n_audio_state
