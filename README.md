@@ -3,7 +3,14 @@
 **We** **S**peech **T**ranscript, LLM based Speech Recognition/Transcript in 300 lines of code.
 
 ## Details
+Motivated by [SLAM-ASR](https://arxiv.org/abs/2402.08846) and [LLaMA 3.1](https://arxiv.org/abs/2407.21783),
+Our model consists of a **LLM**, a **Speech Encoder**, and a **Projector**(speech adapter in LLaMA).
+Only the projector is trainable.
 
+![WeST Model](model.jpg)
+
+* **LLM**, could be LLaMA, QWen, etc.
+* **Speech Encoder**, like whisper.
 
 ## Install
 ``` bash
