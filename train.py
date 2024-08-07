@@ -249,6 +249,8 @@ def init_model(model_args):
     encoder_dim = encoder.dims.n_audio_state
     llm_dim = config.hidden_size
     projector = ProjectorCov1d(model_args, encoder_dim, llm_dim)
+    total_params = sum(p.numel() for p in projector.parameters())
+    print('Projector total params: {:.2f}M'.format(total_params / 1024 / 1024))
     model = SpeechLLM(config, llm_model, encoder, projector)
     if model_args.projector_model_path is not None:
         model.load_projector(model_args.projector_model_path)
