@@ -9,6 +9,7 @@ from typing import Dict, Optional
 
 import safetensors
 import torch
+import torchaudio
 import torch.nn as nn
 import transformers
 from torch.utils.data import Dataset
@@ -75,7 +76,10 @@ class SpeechDataset(Dataset):
         msg = self.raw_data[i]
         # load audio and pad/trim it to fit 30 seconds
         speech_len = 300
-        audio = whisper.load_audio(msg['wav'])
+        audio, sample_rate = torchaudio.load(msg['wav'])
+        if sample_rate != 16000:
+            audio = torchaudio.transforms.Resample(sample_rate, 16000)(audio)
+        audio = audio[0]  # get the first channel
         audio = whisper.pad_or_trim(audio)
         mel = whisper.log_mel_spectrogram(audio)
         ids_audio = [0] * int(mel.shape[1] / 10)  # 10x downsample
