@@ -270,6 +270,7 @@ def main():
         model_max_length=training_args.model_max_length,
         padding_side="right",
     )
+    tokenizer.pad_token = tokenizer.eos_token  # for LLaMa
 
     print("Loading data...")
     train_dataset = SpeechDataset(data_args.data_path,

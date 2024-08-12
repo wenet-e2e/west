@@ -31,6 +31,7 @@ def main():
     model_args, data_args, decode_args = parser.parse_args_into_dataclasses()
     model = init_model(model_args)
     tokenizer = AutoTokenizer.from_pretrained(model_args.llm_model_name_or_path)
+    tokenizer.pad_token = tokenizer.eos_token  # for LLaMa
     test_dataset = SpeechDataset(data_args.data_path,
                                  tokenizer=tokenizer,
                                  inference=True)
