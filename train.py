@@ -199,6 +199,7 @@ class SpeechLLM(PreTrainedModel):
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.LongTensor] = None,
         mel: torch.LongTensor = None,
+        eos_token_id=None,
         decode_config=None,
     ):
         inputs_embeds = self.get_input_embedding(input_ids, mel)
@@ -209,7 +210,7 @@ class SpeechLLM(PreTrainedModel):
             top_p=1.0,
             num_beams=decode_config.num_beams,
             max_new_tokens=decode_config.max_new_tokens,
-            eos_token_id=[151643, 151645],
+            eos_token_id=eos_token_id,
         )
         return model_outputs
 
