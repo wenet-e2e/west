@@ -201,10 +201,6 @@ class SpeechLLM(PreTrainedModel):
         mel: torch.LongTensor = None,
         decode_config=None,
     ):
-        device = next(self.parameters()).device
-        input_ids = input_ids.to(device)
-        attention_mask = attention_mask.to(device)
-        mel = mel.to(device)
         inputs_embeds = self.get_input_embedding(input_ids, mel)
         model_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
