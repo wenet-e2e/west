@@ -233,9 +233,6 @@ class SpeechLLM(PreTrainedModel):
 
 def init_model(model_args):
     encoder = whisper.load_model(model_args.whisper_model_name_or_path)
-    model_load_kwargs = {
-        "low_cpu_mem_usage": not deepspeed.is_deepspeed_zero3_enabled(),
-    }
     # Load llm model and tokenizer
     config = transformers.AutoConfig.from_pretrained(
         model_args.llm_model_name_or_path)
@@ -243,8 +240,7 @@ def init_model(model_args):
     llm_model = AutoModelForCausalLM.from_pretrained(
         model_args.llm_model_name_or_path,
         config=config,
-        device_map=None,
-        **model_load_kwargs,
+        torch_dtype='auto',
     )
     encoder_dim = encoder.dims.n_audio_state
     llm_dim = config.hidden_size
