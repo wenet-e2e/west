@@ -7,7 +7,7 @@ Motivated by [SLAM-ASR](https://arxiv.org/abs/2402.08846) and [LLaMA 3.1](https:
 Our model consists of a **LLM**, a **Speech Encoder**, and a **Projector**(speech adapter in LLaMA).
 Only the projector is trainable.
 
-![WeST Model](model.jpg)
+![WeST Model](img/model.jpg)
 
 * **LLM**, could be LLaMA, QWen, etc.
 * **Speech Encoder**, like whisper.
@@ -69,5 +69,38 @@ python recognize.py \
 ```
 
 ## Results
+
+### LibriSpeech(TODO)
+
+### AIShell
+
+**Different LLM**
+| Exp | LLM        | Speech Encoder     | Projector     | CER  |
+|-----|------------|--------------------|---------------|------|
+| 1   | QWen2 0.5B | Whisper Large 1.5G | Conv1d 12.07M | 9.77 |
+| 2   | QWen2 1.5B | Whisper Large 1.5G | Conv1d 13.32M | 7.45 |
+| 3   | QWen2 7B   | Whisper Large 1.5G | Conv1d 17.32M | 5.55 |
+
+**Different Speech Encoder**
+
+| Exp | LLM        | Speech Encoder     | Projector     | CER   |
+|-----|------------|--------------------|---------------|-------|
+| 1   | QWen2 1.5B | Whisper tiny 39M   | Conv1d 4.5M   | 35.82 |
+| 2   | QWen2 1.5B | Whisper small 244M | Conv1d 7.3M   | 12.41 |
+| 3   | QWen2 1.5B | Whisper Large 1.5G | Conv1d 13.32M | 7.45  |
+
+**Training Loss**
+
+|||
+|--|--|
+| <img src="img/aishell_llm.png"/> | <img src="img/aishell_speech_encoder.png"/> |
+
+**Different Decoding Beam**
+
+Based on `QWen2 1.5B + Whisper Large 1.5G`.
+
+| beam_size | 1    | 3    | 5    | 8    | 10   |
+|-----------|------|------|------|------|------|
+| CER       | 7.45 | 6.82 | 6.84 | 6.83 | 6.87 |
 
 
