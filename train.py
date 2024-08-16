@@ -84,7 +84,7 @@ class SpeechDataset(Dataset):
         mel = whisper.log_mel_spectrogram(audio)
         ids_audio = [0] * int(mel.shape[1] / 10)  # 10x downsample
         tgt_audio = [IGNORE_TOKEN_ID] * len(ids_audio)
-        chat = [{"role": "user", "content": "Trascribe the speech"}]
+        chat = [{"role": "user", "content": "Transcribe the speech"}]
         if self.inference:
             kwargs = {'add_generation_prompt': True}
         else:
