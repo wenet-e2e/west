@@ -220,6 +220,9 @@ class SpeechLLM(PreTrainedModel, Model):
             model_max_length=model_args.model_max_length,
             padding_side="right",
         )
+        special_tokens_dict = {
+            "additional_special_tokens": ["<|audio_bos|>", "<|audio_eos|>"]}
+        tokenizer.add_special_tokens(special_tokens_dict)
         if 'Qwen' in model_args.llm_model_name_or_path:
             tokenizer.bos_token = tokenizer.eos_token
         elif 'llama' in model_args.llm_model_name_or_path:
