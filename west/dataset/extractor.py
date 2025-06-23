@@ -99,7 +99,7 @@ class ExtractorAsrWenet(Extractor):
             'input_ids': input_ids,
             'labels': tgt_ids,
             'mel': mel,
-            'offset': len(ids0),
+            'offset': len(ids0) + 1,
         }
 
 
