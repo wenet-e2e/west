@@ -62,8 +62,8 @@ if [ $stage == "decode" ] || [ $stage == "all" ]; then
         --projector_model_path $mdir/model.safetensors \
         --encoder_projector_ds_rate 2 \
         --data_path $data/test.jsonl \
-        --result_path $dir/result.txt
+        --result_path $mdir/result.txt
     paste <(awk '{print $1}' $data/test.text) $mdir/result.txt > $mdir/result.hyp
     python tools/compute-wer.py --char=1 --v=1 \
-        $mdir/test.text $mdir/result.hyp > $dir/result.wer
+        $data/test.text $mdir/result.hyp > $mdir/result.wer
 fi
