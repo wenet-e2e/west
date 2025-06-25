@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import s3tokenizer
+import safetensors
 import torch
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
@@ -18,6 +19,7 @@ class CodecArguments:
     s3tokenizer_model_name_or_path: Optional[str] = "speech_tokenizer_v1_25hz"
     llm_model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-7B")
     num_speech_tokens: int = 4096
+    codec_llm_model_path: Optional[str] = field(default='')
 
 
 def freeze_model(model):
@@ -101,23 +103,36 @@ class CodecLLM(PreTrainedModel, Model):
         eos_token_id=None,
         decode_config=None,
     ):
+        assert input_ids.size(0) == 1
         input_ids, labels = self.reorg_ids(input_ids, labels, audio_offsets,
                                            audio_features,
                                            audio_feature_lengths, batch_idx)
+        token_length = audio_offsets[0]
+        min_length = token_length * 2
+        max_length = token_length * 20
+        # There is no prompt token output if we use `inputs_embeds`
+        # instead of `input_ids`
+        inputs_embeds = self.llm.get_input_embeddings()(input_ids)
         model_outputs = self.llm.generate(
-            input_ids=input_ids,
+            inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             do_sample=True,
-            top_p=0.9,
+            top_p=0.8,
             top_k=10,
-            num_beams=decode_config.num_beams,
-            max_new_tokens=decode_config.max_new_tokens,
+            repetition_penalty=1.4,
+            min_length=min_length,
+            max_length=max_length,
             eos_token_id=eos_token_id,
         )
         return model_outputs
 
     def freeze_speech_tokenizer(self):
         freeze_model(self.speech_tokenizer)
+
+    def load_llm(self, llm_path):
+        print(f'Loading {llm_path}')
+        llm_state_dict = safetensors.torch.load_file(llm_path)
+        self.load_state_dict(llm_state_dict, strict=False)
 
     @staticmethod
     def init_model(model_args):
@@ -137,6 +152,8 @@ class CodecLLM(PreTrainedModel, Model):
         )
         model = CodecLLM(speech_tokenizer, llm_model, config)
         model.freeze_speech_tokenizer()
+        if model_args.codec_llm_model_path:
+            model.load_llm(model_args.codec_llm_model_path)
         return model
 
     @staticmethod
