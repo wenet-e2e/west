@@ -73,7 +73,7 @@ class ProfilerCallback(TrainerCallback):
 
         if not self.started:
             self.profiler = torch.profiler.profile(
-                schedule=torch.profiler.schedule(wait=99,
+                schedule=torch.profiler.schedule(wait=999,
                                                  warmup=0,
                                                  active=1,
                                                  repeat=0,

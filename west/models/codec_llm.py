@@ -1,6 +1,5 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 
-import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -34,6 +33,7 @@ class CodecLLM(PreTrainedModel, Model):
     def __init__(self, speech_tokenizer, llm, llm_config):
         super().__init__(llm_config)
         self.speech_tokenizer = speech_tokenizer
+        self.speech_tokenizer.freeze()
         self.llm = llm
         self._keys_to_ignore_on_save = set()
         for k in self.speech_tokenizer.state_dict().keys():
@@ -86,8 +86,6 @@ class CodecLLM(PreTrainedModel, Model):
                        labels=labels,
                        position_ids=position_ids,
                        **kwargs)
-        self.num_sentences += audio_features.size(0)
-        logging.info('Train finish {} sentences'.format(self.num_sentences))
         return out
 
     @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
@@ -126,9 +124,6 @@ class CodecLLM(PreTrainedModel, Model):
         )
         return model_outputs
 
-    def freeze_speech_tokenizer(self):
-        freeze_model(self.speech_tokenizer)
-
     def load_llm(self, llm_path):
         print(f'Loading {llm_path}')
         llm_state_dict = safetensors.torch.load_file(llm_path)
@@ -151,7 +146,6 @@ class CodecLLM(PreTrainedModel, Model):
             attn_implementation="flash_attention_2",  # or "flex_attention"
         )
         model = CodecLLM(speech_tokenizer, llm_model, config)
-        model.freeze_speech_tokenizer()
         if model_args.codec_llm_model_path:
             model.load_llm(model_args.codec_llm_model_path)
         return model
