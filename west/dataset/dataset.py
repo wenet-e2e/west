@@ -54,12 +54,7 @@ class SpeechDataset(IterableDataset):
         else:
             self.mode = 'static'
             self.batch_size = data_args.batch_size
-        try:
-            self.world_size = dist.get_world_size()
-            self.rank = dist.get_rank()
-        except Exception:
-            self.world_size = 1
-            self.rank = 0
+
         self.data_args = data_args
         self.extractor = ExtractorFactory.create(data_args.extractor_type)(
             tokenizer=tokenizer,
@@ -68,14 +63,34 @@ class SpeechDataset(IterableDataset):
         self.data_lists = []
         with open(self.data_path, "r") as f:
             for i, line in enumerate(f):
-                if i % self.world_size == self.rank:
-                    self.data_lists.append(line.strip())
-        if not self.inference:
-            random.shuffle(self.data_lists)
+                self.data_lists.append(line.strip())
+
+    def set_epoch(self, epoch):
+        # Set epoch as random seed, which ensures we have the same shuffle
+        # list in training for different rank & workers
+        local_random = random.Random(epoch)
+        local_random.shuffle(self.data_lists)
 
     def _read_one(self):
+        try:
+            world_size = dist.get_world_size()
+            rank = dist.get_rank()
+        except Exception:
+            world_size = 1
+            rank = 0
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:
+            worker_id = 0
+            num_workers = 1
+        else:
+            worker_id = worker_info.id
+            num_workers = worker_info.num_workers
+        # Devide by training gpus
+        train_lists = self.data_lists[rank::world_size]
+        # Devide by reading workers
+        train_lists = train_lists[worker_id::num_workers]
         raw = self.data_path.endswith('.jsonl')
-        for i, line in enumerate(self.data_lists):
+        for i, line in enumerate(train_lists):
             if raw:  # raw json data
                 yield json.loads(line)
             else:  # shard(tar) list data
