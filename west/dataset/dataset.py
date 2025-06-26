@@ -1,6 +1,7 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 
 import json
+import random
 from dataclasses import dataclass, field
 from typing import Dict
 
@@ -63,20 +64,25 @@ class SpeechDataset(IterableDataset):
             tokenizer=tokenizer,
             inference=inference,
         )
-
-    def _read_one(self):
-        raw = self.data_path.endswith('.jsonl')
+        self.data_lists = []
         with open(self.data_path, "r") as f:
             for i, line in enumerate(f):
                 if i % self.world_size == self.rank:
-                    if raw:  # raw json data
-                        yield json.loads(line)
-                    else:  # shard(tar) list data
-                        src = [{'url': line.strip()}]
-                        data = wds.tarfile_samples(src)
-                        for x in data:
-                            x['txt'] = x['txt'].decode('utf8')
-                            yield x
+                    self.data_lists.append(line.strip())
+        if not self.inference:
+            random.shuffle(self.data_lists)
+
+    def _read_one(self):
+        raw = self.data_path.endswith('.jsonl')
+        for i, line in enumerate(self.data_lists):
+            if raw:  # raw json data
+                yield json.loads(line)
+            else:  # shard(tar) list data
+                src = [{'url': line}]
+                data = wds.tarfile_samples(src)
+                for x in data:
+                    x['txt'] = x['txt'].decode('utf8')
+                    yield x
 
     def _pack_sequence(self, seqs):
         """
