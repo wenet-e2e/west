@@ -1,10 +1,18 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 import math
 from abc import ABC, abstractmethod
+from typing import BinaryIO, Union
 
 import torch
 import torchaudio
 from transformers.trainer_pt_utils import LabelSmoother
+
+
+def load_audio(file: Union[str, BinaryIO], sr: int = 16000):
+    audio, sample_rate = torchaudio.load(file)
+    if sample_rate != sr:
+        audio = torchaudio.transforms.Resample(sample_rate, sr)(audio)
+    return audio
 
 
 class Extractor(ABC):
@@ -27,7 +35,9 @@ class ExtractorTtsCodec(Extractor):
         tokenizer = self.kwargs.get('tokenizer')
         inference = self.kwargs.get('inference', False)
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
-        mel = s3tokenizer.log_mel_spectrogram(item['wav'])
+        audio = load_audio(item['wav'])
+        audio = audio[0]  # get the first channel
+        mel = s3tokenizer.log_mel_spectrogram(audio)
         mel = mel.transpose(0, 1)
         # There is 100 frames mel per second, and 25 tokens per second
         num_audio_token = math.ceil(mel.size(0) / 100.0 * 25)
@@ -63,9 +73,7 @@ class ExtractorAsrWenet(Extractor):
         tokenizer = self.kwargs.get('tokenizer')
         inference = self.kwargs.get('inference', False)
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
-        audio, sample_rate = torchaudio.load(item['wav'])
-        if sample_rate != 16000:
-            audio = torchaudio.transforms.Resample(sample_rate, 16000)(audio)
+        audio = load_audio(item['wav'])
         audio = audio * (1 << 15)
         # mel: (T, 80)
         mel = torchaudio.compliance.kaldi.fbank(audio,

@@ -1,5 +1,6 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 
+import io
 import json
 import random
 from dataclasses import dataclass, field
@@ -82,6 +83,7 @@ class SpeechDataset(IterableDataset):
                 data = wds.tarfile_samples(src)
                 for x in data:
                     x['txt'] = x['txt'].decode('utf8')
+                    x['wav'] = io.BytesIO(x['wav'])
                     yield x
 
     def _pack_sequence(self, seqs):
