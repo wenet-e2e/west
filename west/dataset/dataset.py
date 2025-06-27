@@ -3,6 +3,7 @@
 import io
 import json
 import random
+import logging
 from dataclasses import dataclass, field
 from typing import Dict
 
@@ -15,6 +16,10 @@ from torch.utils.data import IterableDataset
 from transformers.trainer_pt_utils import LabelSmoother
 
 from west.dataset.extractor import ExtractorFactory
+
+
+def custom_handler(e):
+    logging.warning(f"Error reading tar file: {e}")
 
 
 @dataclass
@@ -95,8 +100,11 @@ class SpeechDataset(IterableDataset):
                 yield json.loads(line)
             else:  # shard(tar) list data
                 src = [{'url': line}]
-                data = wds.tarfile_samples(src)
+                data = wds.tarfile_samples(src, handler=custom_handler)
                 for x in data:
+                    if 'txt' not in x or 'wav' not in x:
+                        logging.warning(f"Error to parse: {x['__key__']}, "
+                                        "which misses txt or wav.")
                     x['txt'] = x['txt'].decode('utf8')
                     x['wav'] = io.BytesIO(x['wav'])
                     yield x
