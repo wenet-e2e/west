@@ -3,6 +3,7 @@
 import io
 import json
 import random
+import logging
 from dataclasses import dataclass, field
 from typing import Dict
 
@@ -95,11 +96,15 @@ class SpeechDataset(IterableDataset):
                 yield json.loads(line)
             else:  # shard(tar) list data
                 src = [{'url': line}]
-                data = wds.tarfile_samples(src)
-                for x in data:
-                    x['txt'] = x['txt'].decode('utf8')
-                    x['wav'] = io.BytesIO(x['wav'])
-                    yield x
+                try:
+                    data = wds.tarfile_samples(src)
+                    for x in data:
+                        x['txt'] = x['txt'].decode('utf8')
+                        x['wav'] = io.BytesIO(x['wav'])
+                        yield x
+                except Exception as e:
+                    logging.warning(f"Error to parse: {line}, "
+                                    f"Exception: {e}")
 
     def _pack_sequence(self, seqs):
         """
