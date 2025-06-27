@@ -19,7 +19,7 @@ from west.dataset.extractor import ExtractorFactory
 
 
 def custom_handler(e):
-    logging.warning(f"Error reading tar file: {e}")
+    logging.warning(f"Exception: {e}")
 
 
 @dataclass
