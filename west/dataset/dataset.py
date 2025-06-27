@@ -2,6 +2,7 @@
 
 import io
 import json
+import logging
 import random
 from dataclasses import dataclass, field
 from typing import Dict
@@ -30,6 +31,15 @@ class DataArguments:
             "given in batch_size"
         })
     max_speech_frames: int = 1000
+    min_speech_frames: int = 20
+    num_data_cycles: int = field(
+        default=1,
+        metadata={
+            "help":
+            "repeating read `num_data_cycles` times to avoid uneven data in "
+            "training, especically for tar(shard) training. Typically you can  "
+            "set it to the training epochs"
+        })
     extractor_type: str = field(
         default="asr_wenet",
         metadata={"help": "extractor type, 'asr_wenet' or 'tts_codec'"})
@@ -85,21 +95,38 @@ class SpeechDataset(IterableDataset):
         else:
             worker_id = worker_info.id
             num_workers = worker_info.num_workers
-        # Devide by training gpus
-        train_lists = self.data_lists[rank::world_size]
+        lists = self.data_lists
+        # ATTENTION !!!! huggingface accelerator shards the data autotmaticly,
+        # otherwise, we should split the data by the `world_size` and `rank` as
+        # lists = self.data_lists[rank::world_size]
+        # please see:
+        # https://github.com/huggingface/accelerate/blob/v1.8.1/src/accelerate/data_loader.py#L1210  # noqa
         # Devide by reading workers
-        train_lists = train_lists[worker_id::num_workers]
+        lists = lists[worker_id::num_workers]
         raw = self.data_path.endswith('.jsonl')
-        for i, line in enumerate(train_lists):
-            if raw:  # raw json data
-                yield json.loads(line)
-            else:  # shard(tar) list data
-                src = [{'url': line}]
-                data = wds.tarfile_samples(src)
-                for x in data:
-                    x['txt'] = x['txt'].decode('utf8')
-                    x['wav'] = io.BytesIO(x['wav'])
-                    yield x
+        for i in range(self.data_args.num_data_cycles):
+            logging.info(f'Data start iter epoch {i} rank {rank} '
+                         f'worker {worker_id} data_size {len(lists)}')
+            for line in lists:
+                if raw:  # raw json data
+                    yield json.loads(line)
+                else:  # shard(tar) list data
+                    src = [{'url': line}]
+                    try:
+                        count = 0
+                        data = wds.tarfile_samples(src)
+                        for x in data:
+                            try:
+                                x['txt'] = x['txt'].decode('utf8')
+                                x['wav'] = io.BytesIO(x['wav'])
+                                count += 1
+                                yield x
+                            except Exception:
+                                logging.info(f'Dataset decode error, {line}')
+                                continue
+                    except Exception:
+                        logging.info(f'Dataset parsing error, {line}')
+                        continue
 
     def _pack_sequence(self, seqs):
         """
@@ -183,6 +210,9 @@ class SpeechDataset(IterableDataset):
         for item in self._read_one():
             data = self.extractor.extract(item)
             if data['mel'].size(0) > self.data_args.max_speech_frames and \
+               not self.inference:
+                continue
+            if data['mel'].size(0) < self.data_args.min_speech_frames and \
                not self.inference:
                 continue
             if self.mode == 'static' and len(buffer) == self.batch_size:
