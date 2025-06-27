@@ -113,13 +113,11 @@ class SpeechDataset(IterableDataset):
                 else:  # shard(tar) list data
                     src = [{'url': line}]
                     try:
-                        count = 0
                         data = wds.tarfile_samples(src)
                         for x in data:
                             try:
                                 x['txt'] = x['txt'].decode('utf8')
                                 x['wav'] = io.BytesIO(x['wav'])
-                                count += 1
                                 yield x
                             except Exception:
                                 logging.info(f'Dataset decode error, {line}')
