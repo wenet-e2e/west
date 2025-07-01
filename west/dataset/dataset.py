@@ -76,10 +76,11 @@ class SpeechDataset(IterableDataset):
                 self.data_lists.append(line.strip())
 
     def set_epoch(self, epoch):
-        # Set epoch as random seed, which ensures we have the same shuffle
-        # list in training for different rank & workers
-        local_random = random.Random(epoch)
-        local_random.shuffle(self.data_lists)
+        if not self.inference:
+            # Set epoch as random seed, which ensures we have the same shuffle
+            # list in training for different rank & workers
+            local_random = random.Random(epoch)
+            local_random.shuffle(self.data_lists)
 
     def _read_one(self):
         try:
