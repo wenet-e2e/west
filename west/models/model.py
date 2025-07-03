@@ -29,3 +29,8 @@ class Model:
     @classmethod
     def get_class(cls, model_type):
         return cls._registry[model_type]
+
+    @classmethod
+    def get_model(cls, config):
+        model_class = cls.get_class(config.model_type)
+        return model_class(config)
