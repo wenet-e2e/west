@@ -64,25 +64,36 @@ class SpeechLLM(PreTrainedModel, Model):
     model_type = 'speech_llm'
     supports_gradient_checkpointing = True
 
-    def __init__(
-        self,
-        llm: nn.Module,
-        encoder: nn.Module,
-        projector: nn.Module,
-        config,
-        model_args: SpeechLLMArgs,
-    ):
-        super().__init__(config)
-        self.llm = llm
-        self.encoder = encoder
-        self.projector = projector
+    def __init__(self, config: SpeechLLMArgs):
+        llm_config = transformers.AutoConfig.from_pretrained(
+            config.llm_model_name_or_path)
+        llm_config.use_cache = False
+        super().__init__(llm_config)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        encoder = wenet.load_model_pt(config.wenet_model_name_or_path)
+        self.encoder = encoder.to(device)
+        self.llm = AutoModelForCausalLM.from_pretrained(
+            config.llm_model_name_or_path,
+            config=llm_config,
+            torch_dtype='auto',
+            attn_implementation="flash_attention_2",  # or "flex_attention"
+        )
+        encoder_dim = encoder.encoder.output_size()
+        llm_dim = llm_config.hidden_size
+        self.projector = ProjectorCov1d(config, encoder_dim, llm_dim)
+        total_params = sum(p.numel() for p in self.projector.parameters())
+        print('Projector total params: {:.2f}M'.format(total_params / 1024 /
+                                                       1024))
+        if config.projector_model_path is not None:
+            self.load_projector(config.projector_model_path)
+        self.freeze_encoder()
+        self.freeze_llm()
         self._keys_to_ignore_on_save = set()
         # Do not save the parameter of llm and speech encoder
         for k in self.llm.state_dict().keys():
             self._keys_to_ignore_on_save.add('llm.' + k)
         for k in self.encoder.state_dict().keys():
             self._keys_to_ignore_on_save.add('encoder.' + k)
-        self.model_args = model_args
         self.num_sentences = 0
 
     def get_speech_embeddings(self, audio_features, audio_feature_lengths):
@@ -186,42 +197,14 @@ class SpeechLLM(PreTrainedModel, Model):
         self.load_state_dict(projector_state_dict, strict=False)
 
     @staticmethod
-    def init_model(model_args):
-        encoder = wenet.load_model_pt(model_args.wenet_model_name_or_path)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        encoder = encoder.to(device)
-        # Load llm model and tokenizer
-        config = transformers.AutoConfig.from_pretrained(
-            model_args.llm_model_name_or_path)
-        config.use_cache = False
-        llm_model = AutoModelForCausalLM.from_pretrained(
-            model_args.llm_model_name_or_path,
-            config=config,
-            torch_dtype='auto',
-            attn_implementation="flash_attention_2",  # or "flex_attention"
-        )
-        encoder_dim = encoder.encoder.output_size()
-        llm_dim = config.hidden_size
-        projector = ProjectorCov1d(model_args, encoder_dim, llm_dim)
-        total_params = sum(p.numel() for p in projector.parameters())
-        print('Projector total params: {:.2f}M'.format(total_params / 1024 /
-                                                       1024))
-        model = SpeechLLM(llm_model, encoder, projector, config, model_args)
-        if model_args.projector_model_path is not None:
-            model.load_projector(model_args.projector_model_path)
-        model.freeze_encoder()
-        model.freeze_llm()
-        return model
-
-    @staticmethod
-    def init_tokenizer(model_args):
+    def init_tokenizer(config):
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.llm_model_name_or_path,
-            model_max_length=model_args.model_max_length,
+            config.llm_model_name_or_path,
+            model_max_length=config.model_max_length,
             padding_side="right",
         )
-        if 'Qwen' in model_args.llm_model_name_or_path:
+        if 'Qwen' in config.llm_model_name_or_path:
             tokenizer.bos_token = tokenizer.eos_token
-        elif 'llama' in model_args.llm_model_name_or_path:
+        elif 'llama' in config.llm_model_name_or_path:
             tokenizer.pad_token = '<|finetune_right_pad_id|>'
         return tokenizer

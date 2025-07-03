@@ -14,7 +14,7 @@ from .model import Model, ModelArgs
 
 @ModelArgs.register
 @dataclass
-class CodecArguments:
+class CodecArgs:
     s3tokenizer_model_name_or_path: Optional[str] = "speech_tokenizer_v1_25hz"
     llm_model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-7B")
     num_speech_tokens: int = 4096
@@ -30,17 +30,32 @@ class CodecLLM(PreTrainedModel, Model):
     model_type = 'codec_llm'
     supports_gradient_checkpointing = True
 
-    def __init__(self, speech_tokenizer, llm, llm_config):
+    def __init__(self, config: CodecArgs):
+        # Load llm model and tokenizer
+        llm_config = AutoConfig.from_pretrained(config.llm_model_name_or_path)
+        llm_config.use_cache = False
+        # TODO(Binbin Zhang): now we just reuse LLM config, will try to figure
+        # out the impact on training and generation.
         super().__init__(llm_config)
-        self.speech_tokenizer = speech_tokenizer
+        speech_tokenizer = s3tokenizer.load_model(
+            'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.speech_tokenizer = speech_tokenizer.to(device)
+        # TODO(Binbin Zhang): rethink the pretrain and training model init
+        self.llm = AutoModelForCausalLM.from_pretrained(
+            config.llm_model_name_or_path,
+            config=llm_config,
+            torch_dtype='auto',
+            attn_implementation="flash_attention_2",  # or "flex_attention"
+        )
+        if config.codec_llm_model_path:
+            self.load_llm(config.codec_llm_model_path)
         self.speech_tokenizer.freeze()
-        self.llm = llm
         self._keys_to_ignore_on_save = set()
         for k in self.speech_tokenizer.state_dict().keys():
             self._keys_to_ignore_on_save.add('speech_tokenizer.' + k)
         # We assume the last 4096 units are speech tokens
         self.speech_code_start_idx = llm_config.vocab_size - 4096
-        self.num_sentences = 0
 
     def reorg_ids(
         self,
@@ -130,30 +145,8 @@ class CodecLLM(PreTrainedModel, Model):
         self.load_state_dict(llm_state_dict, strict=False)
 
     @staticmethod
-    def init_model(model_args):
-        speech_tokenizer = s3tokenizer.load_model(
-            'speech_tokenizer_v1_25hz',
-            model_args.s3tokenizer_model_name_or_path)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        speech_tokenizer = speech_tokenizer.to(device)
-        # Load llm model and tokenizer
-        config = AutoConfig.from_pretrained(model_args.llm_model_name_or_path)
-        config.use_cache = False
-        llm_model = AutoModelForCausalLM.from_pretrained(
-            model_args.llm_model_name_or_path,
-            config=config,
-            torch_dtype='auto',
-            attn_implementation="flash_attention_2",  # or "flex_attention"
-        )
-        model = CodecLLM(speech_tokenizer, llm_model, config)
-        if model_args.codec_llm_model_path:
-            model.load_llm(model_args.codec_llm_model_path)
-        return model
-
-    @staticmethod
-    def init_tokenizer(model_args):
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.llm_model_name_or_path)
-        if 'Qwen' in model_args.llm_model_name_or_path:
+    def init_tokenizer(config):
+        tokenizer = AutoTokenizer.from_pretrained(config.llm_model_name_or_path)
+        if 'Qwen' in config.llm_model_name_or_path:
             tokenizer.bos_token = tokenizer.eos_token
         return tokenizer

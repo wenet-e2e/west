@@ -106,7 +106,7 @@ def main():
     (model_args, data_args,
      training_args) = parser.parse_args_into_dataclasses()
     model_class = Model.get_class(model_args.model_type)
-    model = model_class.init_model(model_args)
+    model = model_class(model_args)
     tokenizer = model_class.init_tokenizer(model_args)
 
     print("Loading data...")
