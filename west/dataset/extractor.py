@@ -1,18 +1,14 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 import math
 from abc import ABC, abstractmethod
-from typing import BinaryIO, Union
 
 import torch
 import torchaudio
+from torch.nn.utils.rnn import pad_sequence
+from torchaudio.compliance import kaldi
 from transformers.trainer_pt_utils import LabelSmoother
 
-
-def load_audio(file: Union[str, BinaryIO], sr: int = 16000):
-    audio, sample_rate = torchaudio.load(file)
-    if sample_rate != sr:
-        audio = torchaudio.transforms.Resample(sample_rate, sr)(audio)
-    return audio
+from west.utils.audio import mel_spectrogram
 
 
 class Extractor(ABC):
@@ -35,7 +31,8 @@ class ExtractorTtsCodec(Extractor):
         tokenizer = self.kwargs.get('tokenizer')
         inference = self.kwargs.get('inference', False)
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
-        audio = load_audio(item['wav'])
+        audio = torchaudio.transforms.Resample(item['sample_rate'],
+                                               16000)(item['wav'])
         audio = audio[0]  # get the first channel
         mel = s3tokenizer.log_mel_spectrogram(audio)
         mel = mel.transpose(0, 1)
@@ -64,6 +61,55 @@ class ExtractorTtsCodec(Extractor):
         }
 
 
+class ExtractorTtsFlow(Extractor):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.inference = self.kwargs.get('inference', False)
+
+    def extract(self, item):
+        import s3tokenizer
+        audio = torchaudio.transforms.Resample(item['sample_rate'],
+                                               16000)(item['wav'])
+        audio_22k = torchaudio.transforms.Resample(item['sample_rate'],
+                                                   22050)(item['wav'])
+        mel_vocoder = mel_spectrogram(audio_22k, 1024, 80, 22050, 256, 1024, 0,
+                                      22050 / 2)
+        mel_vocoder = mel_vocoder[0].transpose(0, 1)
+        mel_speaker = kaldi.fbank(audio,
+                                  num_mel_bins=80,
+                                  frame_length=25,
+                                  frame_shift=10,
+                                  sample_frequency=16000,
+                                  window_type='hamming')
+        mel_speaker = mel_speaker - torch.mean(mel_speaker, 0)
+        mel_token = s3tokenizer.log_mel_spectrogram(audio[0])
+        mel_token = mel_token.transpose(0, 1)
+        ret = {
+            'mel_speaker': mel_speaker,
+            'mel_token': mel_token,
+            'mel_vocoder': mel_vocoder,
+        }
+        if self.inference:
+            ids = [int(x) for x in item['llm_token'].split()]
+            ret['llm_token'] = torch.tensor(ids, dtype=torch.int)
+        return ret
+
+    def batch(self, seqs):
+        ret = {}
+        for name in ['mel_speaker', 'mel_token', 'mel_vocoder']:
+            mel_features = [s[name] for s in seqs]
+            mel_lengths = torch.tensor([t.size(0) for t in mel_features],
+                                       dtype=torch.int)
+            mel_features = pad_sequence(mel_features, batch_first=True)
+            ret[name] = mel_features
+            ret[name + '_lengths'] = mel_lengths
+        if self.inference:
+            ret['llm_token'] = pad_sequence([s['llm_token'] for s in seqs],
+                                            batch_first=True)
+        return ret
+
+
 class ExtractorAsrWenet(Extractor):
 
     def __init__(self, **kwargs):
@@ -73,7 +119,8 @@ class ExtractorAsrWenet(Extractor):
         tokenizer = self.kwargs.get('tokenizer')
         inference = self.kwargs.get('inference', False)
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
-        audio = load_audio(item['wav'])
+        audio = torchaudio.transforms.Resample(item['sample_rate'],
+                                               16000)(item['wav'])
         audio = audio * (1 << 15)
         # mel: (T, 80)
         mel = torchaudio.compliance.kaldi.fbank(audio,
@@ -118,6 +165,7 @@ class ExtractorFactory:
         classes = {
             'asr_wenet': ExtractorAsrWenet,
             'tts_codec': ExtractorTtsCodec,
+            'tts_flow': ExtractorTtsFlow,
         }
         if extractor_type.lower() in classes:
             return classes[extractor_type.lower()]

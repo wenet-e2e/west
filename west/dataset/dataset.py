@@ -9,6 +9,7 @@ from typing import Dict
 
 import torch
 import torch.distributed as dist
+import torchaudio
 import transformers
 import webdataset as wds
 from torch.nn.utils.rnn import pad_sequence
@@ -30,8 +31,8 @@ class DataArguments:
             "size for sequence pack, it will override any value"
             "given in batch_size"
         })
-    max_speech_frames: int = 1000
-    min_speech_frames: int = 20
+    max_speech_seconds: float = 10
+    min_speech_seconds: int = 0.2
     num_data_cycles: int = field(
         default=1,
         metadata={
@@ -82,12 +83,27 @@ class SpeechDataset(IterableDataset):
             local_random = random.Random(epoch)
             local_random.shuffle(self.data_lists)
 
+    def filter(self, data):
+        for item in data:
+            waveform, sample_rate = torchaudio.load(item['wav'])
+            item['wav'] = waveform
+            item['sample_rate'] = sample_rate
+            if self.inference:
+                yield item
+            else:
+                duration = waveform.shape[1] / sample_rate
+                if duration > self.data_args.max_speech_seconds:
+                    continue
+                if duration < self.data_args.min_speech_seconds:
+                    continue
+                yield item
+
     def _read_one(self):
         try:
-            world_size = dist.get_world_size()
+            # world_size = dist.get_world_size()
             rank = dist.get_rank()
         except Exception:
-            world_size = 1
+            # world_size = 1
             rank = 0
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is None:
@@ -179,6 +195,8 @@ class SpeechDataset(IterableDataset):
         }
 
     def _batch(self, seqs):
+        if hasattr(self.extractor, 'batch'):
+            return self.extractor.batch(seqs)
         audio_features = [s['mel'] for s in seqs]
         audio_feature_lengths = torch.tensor(
             [t.size(0) for t in audio_features], dtype=torch.int)
@@ -206,14 +224,8 @@ class SpeechDataset(IterableDataset):
     def __iter__(self) -> Dict[str, torch.Tensor]:
         buffer = []
         total_length = 0
-        for item in self._read_one():
+        for item in self.filter(self._read_one()):
             data = self.extractor.extract(item)
-            if data['mel'].size(0) > self.data_args.max_speech_frames and \
-               not self.inference:
-                continue
-            if data['mel'].size(0) < self.data_args.min_speech_frames and \
-               not self.inference:
-                continue
             if self.mode == 'static' and len(buffer) == self.batch_size:
                 yield self._batch(buffer)
                 buffer = []
@@ -224,7 +236,8 @@ class SpeechDataset(IterableDataset):
                 buffer = []
                 total_length = 0
             buffer.append(data)
-            total_length += len(data['input_ids'])
+            if 'input_ids' in data:
+                total_length += len(data['input_ids'])
         if self.mode == 'static':
             yield self._batch(buffer)
         else:
