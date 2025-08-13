@@ -24,7 +24,7 @@ def main():
         (ModelArgs, DataArguments, DecodeArguments))
     model_args, data_args, decode_args = parser.parse_args_into_dataclasses()
     model = Model.get_model(model_args)
-    tokenizer = model_class.init_tokenizer(model_args)
+    tokenizer = model.init_tokenizer(model_args)
     if decode_args.llm_type == 'qwen2':
         eos_token_id = tokenizer.convert_tokens_to_ids(
             ['<|endoftext|>', '<|im_end|>'])
