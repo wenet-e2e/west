@@ -1,5 +1,5 @@
 from .model import Model, ModelArgs  # noqa
 # import all models to be registered in Model
-from .codec_llm import CodecLLM  # noqa
-from .flow import FlowModel # noqa
-from .speech_llm import SpeechLLM  # noqa
+from west.models.codec_llm import CodecLLM  # noqa
+from west.models.flow import FlowModel  # noqa
+from west.models.speech_llm import SpeechLLM  # noqa

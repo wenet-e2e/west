@@ -8,8 +8,7 @@ import safetensors
 import torch
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
-
-from .model import Model, ModelArgs
+from west.models.model import Model, ModelArgs
 
 
 @ModelArgs.register

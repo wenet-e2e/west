@@ -10,8 +10,7 @@ import transformers
 import wenet
 from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
-
-from .model import Model, ModelArgs
+from west.models.model import Model, ModelArgs
 
 
 @ModelArgs.register

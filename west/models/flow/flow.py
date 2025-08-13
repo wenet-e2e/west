@@ -14,11 +14,10 @@ import wespeaker
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
-
+from west.models.model import Model, ModelArgs
 from west.utils.mask import make_pad_mask, non_causal_mask
 
 from .length_regulator import InterpolateRegulator
-from .model import Model, ModelArgs
 
 
 @ModelArgs.register

@@ -6,7 +6,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torchaudio.compliance import kaldi
 from west.utils.audio import mel_spectrogram
 
-from .extractor import Extractor
+from west.dataset.extractor import Extractor
 
 
 class ExtractorTtsFlow(Extractor):

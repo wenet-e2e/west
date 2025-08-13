@@ -6,7 +6,7 @@ import torch
 import torchaudio
 from transformers.trainer_pt_utils import LabelSmoother
 
-from .extractor import Extractor
+from west.dataset.extractor import Extractor
 
 
 class ExtractorTtsCodec(Extractor):
