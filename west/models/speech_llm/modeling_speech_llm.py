@@ -10,6 +10,7 @@ import transformers
 import wenet
 from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
+
 from west.models.model import Model, ModelArgs
 
 
