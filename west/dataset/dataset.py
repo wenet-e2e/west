@@ -15,8 +15,7 @@ import webdataset as wds
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import IterableDataset
 from transformers.trainer_pt_utils import LabelSmoother
-
-from west.dataset.extractor import ExtractorFactory
+from west.dataset.extractor import Extractor
 
 
 @dataclass
@@ -67,7 +66,7 @@ class SpeechDataset(IterableDataset):
             self.batch_size = data_args.batch_size
 
         self.data_args = data_args
-        self.extractor = ExtractorFactory.create(data_args.extractor_type)(
+        self.extractor = Extractor.get_class(data_args.extractor_type)(
             tokenizer=tokenizer,
             inference=inference,
         )
