@@ -15,6 +15,7 @@ import webdataset as wds
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import IterableDataset
 from transformers.trainer_pt_utils import LabelSmoother
+
 from west.dataset.extractor import Extractor
 
 
@@ -154,71 +155,64 @@ class SpeechDataset(IterableDataset):
         """
         pack_size = self.pack_size
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
-        input_ids = torch.tensor([0] * pack_size, dtype=torch.int)
-        labels = torch.tensor([IGNORE_TOKEN_ID] * pack_size, dtype=torch.long)
-        position_ids = torch.tensor([0] * pack_size, dtype=torch.int)
-        batch_idx = torch.tensor([0] * len(seqs), dtype=torch.int)
-        audio_offsets = torch.tensor([0] * len(seqs), dtype=torch.int)
-        seq_ids = torch.tensor([0] * pack_size, dtype=torch.int)
-        audio_features = []
+        ret = {}
+        ret['input_ids'] = torch.tensor([0] * pack_size, dtype=torch.int)
+        ret['labels'] = torch.tensor([IGNORE_TOKEN_ID] * pack_size,
+                                     dtype=torch.long)
+        ret['position_ids'] = torch.tensor([0] * pack_size, dtype=torch.int)
+        for k in self.extractor.fields_pack_offset:
+            ret[k] = torch.tensor([0] * len(seqs), dtype=torch.int)
         offset = 0
-        cu_seq_lens = [0]
-        max_length = 0
         for i, seq in enumerate(seqs):
-            audio_offsets[i] = offset + seq['offset']
+            for k in self.extractor.fields_pack_offset:
+                ret[k][i] = offset + seq[k]
             seq_len = len(seq['input_ids'])
-            input_ids[offset:offset + seq_len] = seq['input_ids']
-            labels[offset] = IGNORE_TOKEN_ID
-            labels[offset + 1:offset + seq_len] = seq['labels'][1:]
-            cu_seq_lens.append(cu_seq_lens[-1] + seq_len)
-            max_length = max(max_length, seq_len)
-            position_ids[offset:offset + seq_len] = torch.arange(
+            ret['input_ids'][offset:offset + seq_len] = seq['input_ids']
+            ret['labels'][offset] = IGNORE_TOKEN_ID
+            ret['labels'][offset + 1:offset + seq_len] = seq['labels'][1:]
+            ret['position_ids'][offset:offset + seq_len] = torch.arange(
                 seq_len, dtype=torch.int)
-            seq_ids[offset:offset + seq_len] = i + 1
-            audio_features.append(seq['mel'])
             offset += seq_len
-        # labels[offset] = IGNORE_TOKEN_ID
-        audio_feature_lengths = torch.tensor(
-            [t.size(0) for t in audio_features], dtype=torch.int)
-        audio_features = pad_sequence(audio_features, batch_first=True)
-        cu_seq_lens = torch.tensor(cu_seq_lens, dtype=torch.int)
-        return {
-            'input_ids': input_ids.unsqueeze(0),
-            'labels': labels.unsqueeze(0),
-            # 'attention_mask': seq_ids,  # only used for flex attention
-            'position_ids': position_ids.unsqueeze(0),
-            'audio_offsets': audio_offsets,
-            'audio_features': audio_features,
-            'audio_feature_lengths': audio_feature_lengths,
-            'batch_idx': batch_idx,
-        }
+        ret['batch_idx'] = torch.tensor([0] * len(seqs), dtype=torch.int)
 
-    def _batch(self, seqs):
-        if hasattr(self.extractor, 'batch'):
-            return self.extractor.batch(seqs)
-        audio_features = [s['mel'] for s in seqs]
-        audio_feature_lengths = torch.tensor(
-            [t.size(0) for t in audio_features], dtype=torch.int)
-        audio_features = pad_sequence(audio_features, batch_first=True)
-        input_ids = pad_sequence([s['input_ids'] for s in seqs],
-                                 batch_first=True,
-                                 padding_value=self.tokenizer.pad_token_id)
-        labels = pad_sequence([s['labels'] for s in seqs],
-                              batch_first=True,
-                              padding_value=LabelSmoother.ignore_index)
-        attention_mask = input_ids.ne(self.tokenizer.pad_token_id)
-        audio_offsets = torch.tensor([s['offset'] for s in seqs],
-                                     dtype=torch.int)
-        batch_idx = torch.tensor(list(range(len(seqs))), dtype=torch.int)
-        return {
-            'input_ids': input_ids,
-            'labels': labels,
-            'attention_mask': attention_mask,
-            'audio_offsets': audio_offsets,
-            'audio_features': audio_features,
-            'audio_feature_lengths': audio_feature_lengths,
-            'batch_idx': batch_idx,
-        }
+        ret = ret | self._batch(seqs, pack=True)
+        return ret
+
+    def _batch(self, seqs, pack=False):
+        """ If pack is true, exclude the files for pack
+        """
+        ret = {}
+        if not pack:
+            fields_dynamic = self.extractor.fields_batch_dynamic
+            fields_static = self.extractor.fields_batch_static
+        else:
+            fields_dynamic = self.extractor.fields_batch_dynamic - {
+                'input_ids', 'labels'
+            }
+            fields_static = \
+                self.extractor.fields_batch_static - self.fields_pack_offset
+        for k in fields_dynamic:
+            if k == 'input_ids':
+                padding_value = self.tokenizer.pad_token_id
+            elif k == 'labels':
+                padding_value = LabelSmoother.ignore_index
+            else:
+                padding_value = 0
+            ret[k] = pad_sequence([s[k] for s in seqs],
+                                  batch_first=True,
+                                  padding_value=padding_value)
+            if k not in ['input_ids', 'labels']:
+                ret[k + '_lengths'] = torch.tensor([s[k].size(0) for s in seqs],
+                                                   dtype=torch.int)
+            if k == 'input_ids':
+                ret['attention_mask'] = ret['input_ids'].ne(
+                    self.tokenizer.pad_token_id)
+        for k in fields_static:
+            ret[k] = torch.tensor([s[k] for s in seqs], dtype=torch.int)
+        if not pack:
+            ret['batch_idx'] = torch.tensor(list(range(len(seqs))),
+                                            dtype=torch.int)
+        return ret
 
     def __iter__(self) -> Dict[str, torch.Tensor]:
         buffer = []

@@ -96,9 +96,9 @@ class SpeechLLM(PreTrainedModel, Model):
             self._keys_to_ignore_on_save.add('encoder.' + k)
         self.num_sentences = 0
 
-    def get_speech_embeddings(self, audio_features, audio_feature_lengths):
+    def get_speech_embeddings(self, audio_features, audio_features_lengths):
         speech_emb, mask = self.encoder._forward_encoder(
-            audio_features, audio_feature_lengths)
+            audio_features, audio_features_lengths)
         speech_emb = speech_emb.masked_fill(~mask.transpose(1, 2), 0.0)
         speech_proj = self.projector(speech_emb)
         speech_proj_lens = mask.squeeze(1).sum(1) // self.projector.k
@@ -109,12 +109,12 @@ class SpeechLLM(PreTrainedModel, Model):
         input_ids: torch.LongTensor = None,
         audio_offsets: Optional[torch.LongTensor] = None,
         audio_features: Optional[torch.FloatTensor] = None,
-        audio_feature_lengths: Optional[torch.LongTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
     ):
         text_emb = self.llm.get_input_embeddings()(input_ids)
         speech_emb, speech_emb_lens = self.get_speech_embeddings(
-            audio_features, audio_feature_lengths)
+            audio_features, audio_features_lengths)
         inputs_embeds = text_emb
         for i in range(audio_features.size(0)):
             b = batch_idx[i]
@@ -131,7 +131,7 @@ class SpeechLLM(PreTrainedModel, Model):
         position_ids: Optional[torch.LongTensor] = None,
         audio_offsets: Optional[torch.LongTensor] = None,
         audio_features: Optional[torch.FloatTensor] = None,
-        audio_feature_lengths: Optional[torch.LongTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
         **kwargs,
     ):
@@ -139,7 +139,7 @@ class SpeechLLM(PreTrainedModel, Model):
             input_ids,
             audio_offsets,
             audio_features,
-            audio_feature_lengths,
+            audio_features_lengths,
             batch_idx,
         )
         out = self.llm(inputs_embeds=inputs_embeds,
@@ -159,7 +159,7 @@ class SpeechLLM(PreTrainedModel, Model):
         labels: Optional[torch.LongTensor] = None,
         audio_offsets: Optional[torch.LongTensor] = None,
         audio_features: Optional[torch.FloatTensor] = None,
-        audio_feature_lengths: Optional[torch.LongTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
         eos_token_id=None,
         decode_config=None,
@@ -168,7 +168,7 @@ class SpeechLLM(PreTrainedModel, Model):
             input_ids,
             audio_offsets,
             audio_features,
-            audio_feature_lengths,
+            audio_features_lengths,
             batch_idx,
         )
         model_outputs = self.llm.generate(

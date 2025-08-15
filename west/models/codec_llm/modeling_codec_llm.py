@@ -63,14 +63,14 @@ class CodecLLM(PreTrainedModel, Model):
         labels: Optional[torch.LongTensor] = None,
         audio_offsets: Optional[torch.LongTensor] = None,
         audio_features: Optional[torch.FloatTensor] = None,
-        audio_feature_lengths: Optional[torch.LongTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
     ):
         """ Extract speech codes by speech tokenizer, and reorg that in
             `input_ids`, `labels`
         """
         speech_codes, speech_codes_lens = self.speech_tokenizer.quantize(
-            audio_features.transpose(1, 2), audio_feature_lengths)
+            audio_features.transpose(1, 2), audio_features_lengths)
         for i in range(audio_features.size(0)):
             b = batch_idx[i]
             s, e = audio_offsets[i], audio_offsets[i] + speech_codes_lens[i]
@@ -89,13 +89,13 @@ class CodecLLM(PreTrainedModel, Model):
         position_ids: Optional[torch.LongTensor] = None,
         audio_offsets: Optional[torch.LongTensor] = None,
         audio_features: Optional[torch.FloatTensor] = None,
-        audio_feature_lengths: Optional[torch.LongTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
         **kwargs,
     ):
         input_ids, labels = self.reorg_ids(input_ids, labels, audio_offsets,
                                            audio_features,
-                                           audio_feature_lengths, batch_idx)
+                                           audio_features_lengths, batch_idx)
         out = self.llm(input_ids=input_ids,
                        attention_mask=attention_mask,
                        labels=labels,
@@ -111,7 +111,7 @@ class CodecLLM(PreTrainedModel, Model):
         labels: Optional[torch.LongTensor] = None,
         audio_offsets: Optional[torch.LongTensor] = None,
         audio_features: Optional[torch.FloatTensor] = None,
-        audio_feature_lengths: Optional[torch.LongTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
         eos_token_id=None,
         decode_config=None,
@@ -119,7 +119,7 @@ class CodecLLM(PreTrainedModel, Model):
         assert input_ids.size(0) == 1
         input_ids, labels = self.reorg_ids(input_ids, labels, audio_offsets,
                                            audio_features,
-                                           audio_feature_lengths, batch_idx)
+                                           audio_features_lengths, batch_idx)
         token_length = audio_offsets[0]
         min_length = token_length * 2
         max_length = token_length * 20

@@ -8,6 +8,11 @@ class Extractor(ABC):
     extractor_type = 'base_extractor'
     _registry = {}
 
+    # Batch/Pack fileds for dataset
+    fields_batch_static = {}
+    fields_batch_dynamic = {}
+    fields_pack_offset = {}
+
     def __init__(self, **kwargs):
         self.kwargs = kwargs
 
