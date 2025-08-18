@@ -174,6 +174,9 @@ class SpeechDataset(IterableDataset):
                 seq_len, dtype=torch.int)
             offset += seq_len
         ret['batch_idx'] = torch.tensor([0] * len(seqs), dtype=torch.int)
+        ret['input_ids'] = ret['input_ids'].unsqueeze(0)
+        ret['labels'] = ret['labels'].unsqueeze(0)
+        ret['position_ids'] = ret['position_ids'].unsqueeze(0)
 
         ret = ret | self._batch(seqs, pack=True)
         return ret
@@ -189,8 +192,8 @@ class SpeechDataset(IterableDataset):
             fields_dynamic = self.extractor.fields_batch_dynamic - {
                 'input_ids', 'labels'
             }
-            fields_static = \
-                self.extractor.fields_batch_static - self.fields_pack_offset
+            fields_static = self.extractor.fields_batch_static \
+                            - self.extractor.fields_pack_offset
         for k in fields_dynamic:
             if k == 'input_ids':
                 padding_value = self.tokenizer.pad_token_id

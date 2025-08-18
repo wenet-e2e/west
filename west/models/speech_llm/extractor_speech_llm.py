@@ -10,7 +10,7 @@ from west.dataset.extractor import Extractor
 class ExtractorAsrWenet(Extractor):
     extractor_type = 'asr_wenet'
     fields_batch_static = {'audio_offsets'}
-    fields_batch_dynamic = ['audio_features', 'input_ids', 'labels']
+    fields_batch_dynamic = {'audio_features', 'input_ids', 'labels'}
     fields_pack_offset = {'audio_offsets'}
 
     def __init__(self, **kwargs):
