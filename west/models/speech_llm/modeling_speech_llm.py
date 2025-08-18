@@ -10,6 +10,7 @@ import transformers
 import wenet
 from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
+from peft import LoraConfig, get_peft_model
 
 from west.models.model import Model, ModelArgs
 
@@ -27,6 +28,7 @@ class SpeechLLMArgs:
         default=8192,
         metadata={"help": "Maximum sequence length"},
     )
+    use_lora: bool = field(default=False, metadata={"help": "Use LoRA"})
 
 
 class ProjectorCov1d(nn.Module):
@@ -84,14 +86,39 @@ class SpeechLLM(PreTrainedModel, Model):
         total_params = sum(p.numel() for p in self.projector.parameters())
         print('Projector total params: {:.2f}M'.format(total_params / 1024 /
                                                        1024))
+        if config.use_lora:
+            lora_config = LoraConfig(
+                r=64,
+                lora_alpha=16,
+                target_modules=[
+                    "q_proj",
+                    "k_proj",
+                    "v_proj",
+                    "o_proj",
+                    "up_proj",
+                    "gate_proj",
+                    "down_proj",
+                ],
+                lora_dropout=0.05,
+                task_type="CAUSAL_LM",
+                inference_mode=False,
+            )
+            self.llm = get_peft_model(self.llm, lora_config)
+            self.llm.print_trainable_parameters()
+
         if config.projector_model_path is not None:
             self.load_projector(config.projector_model_path)
         self.freeze_encoder()
-        self.freeze_llm()
         self._keys_to_ignore_on_save = set()
         # Do not save the parameter of llm and speech encoder
-        for k in self.llm.state_dict().keys():
-            self._keys_to_ignore_on_save.add('llm.' + k)
+        if config.use_lora:
+            for k in self.llm.state_dict().keys():
+                if list(self.llm.peft_config.keys())[0] not in k:
+                    self._keys_to_ignore_on_save.add('llm.' + k)
+        else:
+            for k in self.llm.state_dict().keys():
+                self._keys_to_ignore_on_save.add('llm.' + k)
+            self.freeze_llm()
         for k in self.encoder.state_dict().keys():
             self._keys_to_ignore_on_save.add('encoder.' + k)
         self.num_sentences = 0
