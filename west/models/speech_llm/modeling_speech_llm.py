@@ -8,9 +8,9 @@ import safetensors
 import torch
 import transformers
 import wenet
+from peft import LoraConfig, get_peft_model
 from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
-from peft import LoraConfig, get_peft_model
 
 from west.models.model import Model, ModelArgs
 

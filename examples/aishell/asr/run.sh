@@ -23,6 +23,7 @@ fi
 
 if [ $stage == "train" ] || [ $stage == "all" ]; then
     torchrun --standalone --nnodes=1 --nproc_per_node=$num_gpus west/bin/train.py \
+        --model_type "speech_llm" \
         --llm_model_name_or_path $llm \
         --wenet_model_name_or_path $speech_encoder \
         --data_path $data/train.jsonl \
@@ -57,6 +58,7 @@ fi
 if [ $stage == "decode" ] || [ $stage == "all" ]; then
     mdir=$dir/checkpoint-${steps}
     python west/bin/decode.py \
+        --model_type "speech_llm" \
         --llm_model_name_or_path $llm \
         --wenet_model_name_or_path $speech_encoder \
         --projector_model_path $mdir/model.safetensors \

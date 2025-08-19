@@ -10,7 +10,6 @@ from typing import Dict
 import torch
 import torch.distributed as dist
 import torchaudio
-import transformers
 import webdataset as wds
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import IterableDataset
@@ -41,9 +40,6 @@ class DataArguments:
             "training, especically for tar(shard) training. Typically you can  "
             "set it to the training epochs"
         })
-    extractor_type: str = field(
-        default="asr_wenet",
-        metadata={"help": "extractor type, 'asr_wenet' or 'tts_codec'"})
 
 
 class SpeechDataset(IterableDataset):
@@ -51,14 +47,15 @@ class SpeechDataset(IterableDataset):
 
     def __init__(
         self,
-        tokenizer: transformers.PreTrainedTokenizer,
+        extractor: Extractor,
         data_args: DataArguments,
         inference: bool = False,
     ):
         super(SpeechDataset, self).__init__()
         self.data_path = data_args.data_path
-        self.tokenizer = tokenizer
-        self.inference = inference
+        self.extractor = extractor
+        self.tokenizer = extractor.tokenizer
+        self.inference = extractor.inference
         if data_args.pack_size > 0:
             self.mode = 'pack'
             self.pack_size = data_args.pack_size
@@ -67,10 +64,6 @@ class SpeechDataset(IterableDataset):
             self.batch_size = data_args.batch_size
 
         self.data_args = data_args
-        self.extractor = Extractor.get_class(data_args.extractor_type)(
-            tokenizer=tokenizer,
-            inference=inference,
-        )
         self.data_lists = []
         with open(self.data_path, "r") as f:
             for i, line in enumerate(f):
@@ -192,8 +185,8 @@ class SpeechDataset(IterableDataset):
             fields_dynamic = self.extractor.fields_batch_dynamic - {
                 'input_ids', 'labels'
             }
-            fields_static = self.extractor.fields_batch_static \
-                            - self.extractor.fields_pack_offset
+            fields_static = self.extractor.fields_batch_static - \
+                self.extractor.fields_pack_offset
         for k in fields_dynamic:
             if k == 'input_ids':
                 padding_value = self.tokenizer.pad_token_id

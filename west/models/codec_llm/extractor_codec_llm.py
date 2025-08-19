@@ -10,18 +10,13 @@ from west.dataset.extractor import Extractor
 
 
 class ExtractorTtsCodec(Extractor):
-    extractor_type = 'tts_codec'
+    model_type = 'codec_llm'
     fields_batch_static = {'audio_offsets', 'text_lengths'}
     fields_batch_dynamic = {'audio_features', 'input_ids', 'labels'}
     fields_pack_offset = {'audio_offsets'}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def extract(self, item):
         import s3tokenizer
-        tokenizer = self.kwargs.get('tokenizer')
-        inference = self.kwargs.get('inference', False)
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
         audio = torchaudio.transforms.Resample(item['sample_rate'],
                                                16000)(item['wav'])
@@ -30,16 +25,17 @@ class ExtractorTtsCodec(Extractor):
         mel = mel.transpose(0, 1)
         # There is 100 frames mel per second, and 25 tokens per second
         num_audio_token = math.ceil(mel.size(0) / 100.0 * 25)
-        if not inference:
+        if not self.inference:
             content = item['txt'] + '<|audio_bos|>'
         else:
             content = item['txt'] + item['syn_txt'] + '<|audio_bos|>'
-        ids_text = [tokenizer.bos_token_id] + tokenizer.encode(content)
+        ids_text = [self.tokenizer.bos_token_id
+                    ] + self.tokenizer.encode(content)
         tgt_text = [IGNORE_TOKEN_ID] * len(ids_text)
         ids_audio = [0] * num_audio_token
-        if not inference:
-            ids = ids_text + ids_audio + [tokenizer.eos_token_id]
-            tgt = tgt_text + ids_audio + [tokenizer.eos_token_id]
+        if not self.inference:
+            ids = ids_text + ids_audio + [self.tokenizer.eos_token_id]
+            tgt = tgt_text + ids_audio + [self.tokenizer.eos_token_id]
         else:
             ids = ids_text + ids_audio
             tgt = tgt_text + ids_audio

@@ -11,7 +11,9 @@ import torch
 import transformers
 from torch import nn
 from transformers import Trainer, TrainerCallback
+
 from west.dataset.dataset import DataArguments, SpeechDataset
+from west.dataset.extractor import Extractor
 from west.models.model import Model, ModelArgs
 
 
@@ -107,9 +109,10 @@ def main():
      training_args) = parser.parse_args_into_dataclasses()
     model = Model.get_model(model_args)
     tokenizer = model.init_tokenizer(model_args)
+    extractor = Extractor.get_class(model_args.model_type)(tokenizer)
 
     print("Loading data...")
-    train_dataset = SpeechDataset(tokenizer, data_args)
+    train_dataset = SpeechDataset(extractor, data_args)
     # Start trainer
     trainer = MyTrainer(
         model=model,

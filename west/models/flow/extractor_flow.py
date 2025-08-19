@@ -9,13 +9,12 @@ from west.utils.audio import mel_spectrogram
 
 
 class ExtractorTtsFlow(Extractor):
-    extractor_type = 'tts_flow'
+    model_type = 'flow'
 
     fields_batch_dynamic = {'mel_speaker', 'mel_token', 'mel_vocoder'}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.inference = self.kwargs.get('inference', False)
+    def __init__(self, tokenizer, inference=False):
+        super().__init__(tokenizer, inference)
         if self.inference:
             self.fields_batch_dynamic.add('llm_token')
 

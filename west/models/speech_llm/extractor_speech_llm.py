@@ -8,17 +8,12 @@ from west.dataset.extractor import Extractor
 
 
 class ExtractorAsrWenet(Extractor):
-    extractor_type = 'asr_wenet'
+    model_type = 'speech_llm'
     fields_batch_static = {'audio_offsets'}
     fields_batch_dynamic = {'audio_features', 'input_ids', 'labels'}
     fields_pack_offset = {'audio_offsets'}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def extract(self, item):
-        tokenizer = self.kwargs.get('tokenizer')
-        inference = self.kwargs.get('inference', False)
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
         audio = torchaudio.transforms.Resample(item['sample_rate'],
                                                16000)(item['wav'])
@@ -40,15 +35,15 @@ class ExtractorAsrWenet(Extractor):
              'You are a helpful assistant<|im_end|>\n' + \
              '<|im_start|>user\n' + instruction + '<|audio_bos|>'
         t1 = '<|audio_eos|><|im_end|>\n' + '<|im_start|>assistant\n'
-        ids0 = tokenizer.encode(t0)
-        ids1 = tokenizer.encode(t1)
-        ids = [tokenizer.bos_token_id] + ids0 + ids_audio + ids1
-        tgt = [tokenizer.bos_token_id] + ids0 + tgt_audio + ids1
-        if not inference:
+        ids0 = self.tokenizer.encode(t0)
+        ids1 = self.tokenizer.encode(t1)
+        ids = [self.tokenizer.bos_token_id] + ids0 + ids_audio + ids1
+        tgt = [self.tokenizer.bos_token_id] + ids0 + tgt_audio + ids1
+        if not self.inference:
             t2 = content + '<|im_end|>\n'
-            ids2 = tokenizer.encode(t2)
-            ids = ids + ids2 + [tokenizer.eos_token_id]
-            tgt = tgt + ids2 + [tokenizer.eos_token_id]
+            ids2 = self.tokenizer.encode(t2)
+            ids = ids + ids2 + [self.tokenizer.eos_token_id]
+            tgt = tgt + ids2 + [self.tokenizer.eos_token_id]
         input_ids = torch.tensor(ids, dtype=torch.int)
         tgt_ids = torch.tensor(tgt, dtype=torch.long)
         return {
