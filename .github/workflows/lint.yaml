@@ -35,4 +35,3 @@ jobs:
         uses: tj-actions/changed-files@v45.0.8
       - name: Lint modified files
         run: pre-commit run --files ${{ steps.changed-files.outputs.all_changed_files }}
-
