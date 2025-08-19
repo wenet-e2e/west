@@ -14,6 +14,7 @@ import wespeaker
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
+
 from west.models.model import Model, ModelArgs
 from west.utils.mask import make_pad_mask, non_causal_mask
 
@@ -22,7 +23,7 @@ from .length_regulator import InterpolateRegulator
 
 @ModelArgs.register
 @dataclass
-class FlowModelArgs:
+class TouchFlowArgs:
     s3tokenizer_model_name_or_path: Optional[str] = "speech_tokenizer_v1_25hz"
     speaker_model_path: Optional[str] = ""
     text_tokenizer_path: Optional[str] = ""
@@ -61,9 +62,9 @@ def freeze_model(model):
         param.requires_grad = False
 
 
-class FlowModel(PreTrainedModel, Model):
+class TouchFlow(PreTrainedModel, Model):
     """flow model based on huggingface transformers"""
-    model_type = 'flow_model'
+    model_type = 'touch_flow'
     supports_gradient_checkpointing = True
 
     def __init__(self, args):

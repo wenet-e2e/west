@@ -17,7 +17,7 @@ from west.models.model import Model, ModelArgs
 
 @ModelArgs.register
 @dataclass
-class SpeechLLMArgs:
+class TouchASUArgs:
     llm_model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-7B")
     wenet_model_name_or_path: Optional[str] = field(default="")
     encoder_ds_rate: int = 2
@@ -62,11 +62,13 @@ def freeze_model(model):
         param.requires_grad = False
 
 
-class SpeechLLM(PreTrainedModel, Model):
-    model_type = 'speech_llm'
+class TouchASU(PreTrainedModel, Model):
+    """ LLM based Automatic Speech Understanding
+    """
+    model_type = 'touch_asu'
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: SpeechLLMArgs):
+    def __init__(self, config: TouchASUArgs):
         llm_config = transformers.AutoConfig.from_pretrained(
             config.llm_model_name_or_path)
         llm_config.use_cache = False

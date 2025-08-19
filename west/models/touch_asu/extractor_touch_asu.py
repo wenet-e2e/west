@@ -7,8 +7,8 @@ from transformers.trainer_pt_utils import LabelSmoother
 from west.dataset.extractor import Extractor
 
 
-class ExtractorAsrWenet(Extractor):
-    model_type = 'speech_llm'
+class ExtractorTouchASU(Extractor):
+    model_type = 'touch_asu'
     fields_batch_static = {'audio_offsets'}
     fields_batch_dynamic = {'audio_features', 'input_ids', 'labels'}
     fields_pack_offset = {'audio_offsets'}

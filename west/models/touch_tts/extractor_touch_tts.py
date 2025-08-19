@@ -9,8 +9,8 @@ from transformers.trainer_pt_utils import LabelSmoother
 from west.dataset.extractor import Extractor
 
 
-class ExtractorTtsCodec(Extractor):
-    model_type = 'codec_llm'
+class ExtractorTouchTTS(Extractor):
+    model_type = 'touch_tts'
     fields_batch_static = {'audio_offsets', 'text_lengths'}
     fields_batch_dynamic = {'audio_features', 'input_ids', 'labels'}
     fields_pack_offset = {'audio_offsets'}

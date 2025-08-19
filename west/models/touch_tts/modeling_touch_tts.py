@@ -14,7 +14,7 @@ from west.models.model import Model, ModelArgs
 
 @ModelArgs.register
 @dataclass
-class CodecArgs:
+class TouchTTSArgs:
     s3tokenizer_model_name_or_path: Optional[str] = "speech_tokenizer_v1_25hz"
     llm_model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-7B")
     num_speech_tokens: int = 4096
@@ -26,11 +26,13 @@ def freeze_model(model):
         param.requires_grad = False
 
 
-class CodecLLM(PreTrainedModel, Model):
-    model_type = 'codec_llm'
+class TouchTTS(PreTrainedModel, Model):
+    """ LLM based TTS, text in, speech token out
+    """
+    model_type = 'touch_tts'
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: CodecArgs):
+    def __init__(self, config: TouchTTSArgs):
         # Load llm model and tokenizer
         llm_config = AutoConfig.from_pretrained(config.llm_model_name_or_path)
         llm_config.use_cache = False

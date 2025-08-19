@@ -8,8 +8,8 @@ from west.dataset.extractor import Extractor
 from west.utils.audio import mel_spectrogram
 
 
-class ExtractorTtsFlow(Extractor):
-    model_type = 'flow'
+class ExtractorTouchFlow(Extractor):
+    model_type = 'touch_flow'
 
     fields_batch_dynamic = {'mel_speaker', 'mel_token', 'mel_vocoder'}
 
