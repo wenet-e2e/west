@@ -1,0 +1,37 @@
+exclude: 'build'
+
+default_language_version:
+  python: python3
+
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v5.0.0
+  hooks:
+  - id: check-symlinks
+  - id: trailing-whitespace
+    args: [--markdown-linebreak-ext=md]
+  - id: end-of-file-fixer
+    exclude: '^(.*\.svg)$'
+  - id: check-yaml
+  - id: check-toml
+  - id: check-ast
+  - id: check-added-large-files
+    args: ['--maxkb=8192']
+  - id: check-merge-conflict
+  - id: detect-private-key
+  - id: debug-statements
+
+- repo: https://github.com/pycqa/isort
+  rev: 5.12.0
+  hooks:
+  - id: isort
+
+- repo: https://github.com/pycqa/flake8
+  rev: 34cbf8ef3950f43d09b85e2e45c15ae5717dc37b
+  hooks:
+  - id: flake8
+    additional_dependencies:
+      - flake8-bugbear == 22.4.25
+      - pep8-naming == 0.12.1
+      - torchfix
+    args: ['--config=.flake8']
