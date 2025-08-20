@@ -35,6 +35,7 @@ class TouchFlowArgs:
     training_cfg_rate: float = 0.2
     inference_cfg_rate: float = 0.7
     n_timesteps: int = 5
+    only_interpolate: bool = False
 
 
 class SinusoidalPosEmb(torch.nn.Module):
@@ -74,8 +75,7 @@ class TouchFlow(PreTrainedModel, Model):
         speech_tokenizer = s3tokenizer.load_model(
             'speech_tokenizer_v1_25hz', args.s3tokenizer_model_name_or_path)
         self.speech_tokenizer = speech_tokenizer.to(device)
-        speaker_model = wespeaker.load_model_local(
-            args.speaker_model_path).model
+        speaker_model = wespeaker.load_model_pt(args.speaker_model_path)
         self.speaker_model = speaker_model.to(device)
         # Load llm model and tokenizer
         self.llm = AutoModelForCausalLM.from_config(config=config)
@@ -87,7 +87,8 @@ class TouchFlow(PreTrainedModel, Model):
         freeze_model(self.speech_tokenizer)
         freeze_model(self.speaker_model)
         self.vocab_size = self.llm.vocab_size
-        self.length_regulator = InterpolateRegulator()
+        self.length_regulator = InterpolateRegulator(
+            only_interpolate=args.only_interpolate)
         mel_dim = 80
         hidden_size = config.hidden_size
         self.spk_encoder = torch.nn.Linear(192, mel_dim)
@@ -267,7 +268,7 @@ class TouchFlow(PreTrainedModel, Model):
         vocoder_lengths = torch.tensor([T], dtype=torch.long, device=device)
         att_mask = non_causal_mask(vocoder_lengths).to(device)  # (B, T, T)
         att_mask = att_mask.unsqueeze(1)  # (B, 1, T, T)
-        for step in range(1, self.args.n_timesteps):
+        for step in range(1, len(t_span)):
             x_in[:, :, 0:M] = pt
             t_cond = self.time_encoder(
                 self.time_embeddings(t.squeeze()).to(t.dtype))

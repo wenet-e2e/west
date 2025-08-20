@@ -27,21 +27,25 @@ class InterpolateRegulator(nn.Module):
         sampling_ratios: Tuple = (1, 1, 1, 1),
         out_channels: int = None,
         groups: int = 1,
+        only_interpolate: bool = False,
     ):
         super().__init__()
         self.sampling_ratios = sampling_ratios
         out_channels = out_channels or channels
-        model = nn.ModuleList([])
-        if len(sampling_ratios) > 0:
-            for _ in sampling_ratios:
-                module = nn.Conv1d(channels, channels, 3, 1, 1)
-                norm = nn.GroupNorm(groups, channels)
-                act = nn.Mish()
-                model.extend([module, norm, act])
-        model.append(
-            nn.Conv1d(channels, out_channels, 1, 1)
-        )
-        self.model = nn.Sequential(*model)
+        if not only_interpolate:
+            model = nn.ModuleList([])
+            if len(sampling_ratios) > 0:
+                for _ in sampling_ratios:
+                    module = nn.Conv1d(channels, channels, 3, 1, 1)
+                    norm = nn.GroupNorm(groups, channels)
+                    act = nn.Mish()
+                    model.extend([module, norm, act])
+            model.append(
+                nn.Conv1d(channels, out_channels, 1, 1)
+            )
+            self.model = nn.Sequential(*model)
+        else:
+            self.model = nn.Identity()
 
     def forward(self, x, ylens=None):
         # x in (B, T, D)
