@@ -29,6 +29,10 @@ class TouchASUArgs:
         metadata={"help": "Maximum sequence length"},
     )
     use_lora: bool = field(default=False, metadata={"help": "Use LoRA"})
+    projector_type: str = field(
+        default="conv1d",
+        metadata={"help": "Type of projection for the encoder output"},
+    )
 
 
 class ProjectorCov1d(nn.Module):
@@ -53,6 +57,38 @@ class ProjectorCov1d(nn.Module):
         x = self.relu1(x)
         x = self.linear1(x)
         x = self.relu2(x)
+        x = self.linear2(x)
+        return x
+
+
+class ProjectorLinear(nn.Module):
+    def __init__(self, config, encoder_dim, llm_dim, act_type="gelu"):
+        super().__init__()
+        self.k = config.encoder_projector_ds_rate
+        self.linear1 = nn.Linear(encoder_dim * self.k,
+                                 config.projector_hidden_size)
+        self.linear2 = nn.Linear(config.projector_hidden_size, llm_dim)
+        if act_type == "relu":
+            self.activation = nn.ReLU()
+        elif act_type == "gelu":
+            self.activation = nn.GELU()
+        else:
+            raise ValueError(act_type)
+
+    def forward(self, x):
+        batch_size, seq_len, feat_dim = x.size()
+        num_frames_to_discard = seq_len % self.k
+        if num_frames_to_discard > 0:
+            x = x[:, :-num_frames_to_discard, :]
+        seq_len = x.size(1)
+
+        x = x.contiguous()
+        x = x.view(
+            batch_size, seq_len // self.k, feat_dim * self.k
+        )
+
+        x = self.linear1(x)
+        x = self.activation(x)
         x = self.linear2(x)
         return x
 
@@ -84,7 +120,13 @@ class TouchASU(PreTrainedModel, Model):
         )
         encoder_dim = encoder.encoder.output_size()
         llm_dim = llm_config.hidden_size
-        self.projector = ProjectorCov1d(config, encoder_dim, llm_dim)
+        if config.projector_type == "conv1d":
+            self.projector = ProjectorCov1d(config, encoder_dim, llm_dim)
+        elif config.projector_type == "linear":
+            self.projector = ProjectorLinear(config, encoder_dim, llm_dim)
+        else:
+            raise ValueError(
+                f"Unsupported projection type: {config.projector_type}")
         total_params = sum(p.numel() for p in self.projector.parameters())
         print('Projector total params: {:.2f}M'.format(total_params / 1024 /
                                                        1024))
