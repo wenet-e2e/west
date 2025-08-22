@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 @dataclass
 class ModelArgs:
-    model_type: str = 'speech_llm'
+    model_type: str = 'torch_asu'
 
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
