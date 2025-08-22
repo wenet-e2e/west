@@ -1,6 +1,9 @@
-# import all models to be registered in Model
-from west.models.touch_asu import TouchASU  # noqa
-from west.models.touch_flow import TouchFlow  # noqa
-from west.models.touch_tts import TouchTTS  # noqa
+from transformers import AutoConfig, AutoModel
 
-from .model import Model, ModelArgs  # noqa
+from west.models.touch_asu import TouchASU, TouchASUConfig  # noqa
+# from west.models.touch_flow import TouchFlow  # noqa
+# from west.models.touch_tts import TouchTTS  # noqa
+#
+
+AutoConfig.register("touch_asu", TouchASUConfig)
+AutoModel.register(TouchASUConfig, TouchASU)
