@@ -11,7 +11,6 @@ import safetensors
 import torch
 import torch.nn.functional as F
 import wespeaker
-from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
 

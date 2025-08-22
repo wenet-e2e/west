@@ -26,7 +26,8 @@ def main():
     model_args, data_args, decode_args = parser.parse_args_into_dataclasses()
     model = Model.get_model(model_args)
     tokenizer = model.init_tokenizer(model_args)
-    extractor = Extractor.get_class(model_args.model_type)(tokenizer, inference=True)
+    extractor = Extractor.get_class(model_args.model_type)(tokenizer,
+                                                           inference=True)
     test_dataset = SpeechDataset(extractor, data_args, inference=True)
     data_loader = DataLoader(test_dataset, collate_fn=lambda x: x[0])
     if torch.cuda.is_available():
