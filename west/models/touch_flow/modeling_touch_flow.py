@@ -121,6 +121,7 @@ class TouchFlow(PreTrainedModel, Model):
         mel_token_lengths: Optional[torch.LongTensor] = None,
         mel_vocoder: Optional[torch.FloatTensor] = None,
         mel_vocoder_lengths: Optional[torch.LongTensor] = None,
+        **kwargs,
     ):
         """ All mel_* tensors are in (B, T, D)
         """
@@ -131,18 +132,11 @@ class TouchFlow(PreTrainedModel, Model):
         # Condition speech token, compute speech token on-the-fly
         speech_token, speech_token_lengths = self.speech_tokenizer.quantize(
             mel_token.transpose(1, 2), mel_token_lengths)
-        speech_token = unpad_sequence(speech_token,
-                                      speech_token_lengths,
-                                      batch_first=True)
-        token_cond = []
-        for i, y in enumerate(speech_token):
-            emb = self.token_encoder(self.llm.model.embed_tokens(y))
-            emb, _ = self.interpolate(emb.unsqueeze(0),
-                                      mel_vocoder_lengths[i].unsqueeze(0))
-            token_cond.append(emb.squeeze(0))
-        token_cond = pad_sequence(token_cond,
-                                  batch_first=True,
-                                  padding_value=0.0).to(device)  # (B, T, M)
+        speech_token = speech_token.clone()
+        emb = self.token_encoder(self.llm.model.embed_tokens(speech_token))
+        mask = ~make_pad_mask(speech_token_lengths).to(device)
+        emb = emb * mask.unsqueeze(-1)
+        token_cond, _ = self.interpolate(emb, mel_vocoder_lengths)
         # Condition speaker embedding, compute speaker embedding on-the-fly
         # Use the min length in batch to compute embedding for each item
         spk_emb = self.speaker_model(mel_speaker)
@@ -203,6 +197,7 @@ class TouchFlow(PreTrainedModel, Model):
         mel_vocoder: Optional[torch.FloatTensor] = None,
         mel_vocoder_lengths: Optional[torch.LongTensor] = None,
         llm_token: Optional[torch.LongTensor] = None,
+        **kwargs,
     ):
         """
         Args:
