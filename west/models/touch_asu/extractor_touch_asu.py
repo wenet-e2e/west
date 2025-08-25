@@ -29,8 +29,7 @@ class ExtractorTouchASU(Extractor):
         # TODO(Binbin Zhang): Refine to instruction + <AUDIO>
         ids_audio = [0] * (mel.size(0) // 8)  # 8 is the final subsampling rate
         tgt_audio = [IGNORE_TOKEN_ID] * len(ids_audio)
-        # instruction = 'Transcribe the speech'
-        instruction = item.get('instruction', '')
+        instruction = 'Transcribe the speech'
         content = item['txt']
         t0 = '<|im_start|>system\n' + \
              'You are a helpful assistant<|im_end|>\n' + \
