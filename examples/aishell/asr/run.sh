@@ -36,7 +36,7 @@ if [ $stage == "train" ] || [ $stage == "all" ]; then
         --per_device_eval_batch_size 1 \
         --gradient_accumulation_steps 4 \
         --save_strategy "steps" \
-        --save_steps 10 \
+        --save_steps 100 \
         --save_total_limit 100 \
         --learning_rate 3e-4 \
         --weight_decay 0.01 \
