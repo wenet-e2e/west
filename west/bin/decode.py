@@ -3,14 +3,13 @@ import sys
 from dataclasses import dataclass, field
 
 import torch
-import transformers
 from accelerate import Accelerator
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from transformers import AutoModel, HfArgumentParser
 
 from west.dataset.dataset import DataArguments, SpeechDataset
 from west.dataset.extractor import Extractor
-from west.models.model import Model, ModelArgs
 
 
 @dataclass
@@ -19,16 +18,15 @@ class DecodeArguments:
     max_new_tokens: int = 50
     num_beams: int = 1
     result_path: str = field(default=None, metadata={"help": "Path to result"})
+    model_dir: str = field(default='')
 
 
 def main():
-    parser = transformers.HfArgumentParser(
-        (ModelArgs, DataArguments, DecodeArguments))
-    model_args, data_args, decode_args = parser.parse_args_into_dataclasses()
-    model = Model.get_model(model_args)
-    tokenizer = model.init_tokenizer(model_args)
-    extractor = Extractor.get_class(model_args.model_type)(tokenizer,
-                                                           inference=True)
+    parser = HfArgumentParser((DataArguments, DecodeArguments))
+    data_args, decode_args = parser.parse_args_into_dataclasses()
+    model = AutoModel.from_pretrained(decode_args.model_dir)
+    tokenizer = model.init_tokenizer()
+    extractor = Extractor.get_class(model.model_type)(tokenizer, inference=True)
     if decode_args.llm_type == 'qwen2':
         eos_token_id = tokenizer.convert_tokens_to_ids(
             ['<|endoftext|>', '<|im_end|>'])

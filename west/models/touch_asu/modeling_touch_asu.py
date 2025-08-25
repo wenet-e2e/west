@@ -1,16 +1,14 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 
-import logging
-from dataclasses import dataclass, field
 from typing import Optional
 
 import safetensors
 import torch
-import transformers
 import wenet
 from peft import LoraConfig, get_peft_model
 from torch import nn
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                          PreTrainedModel)
 
 from .configuration_touch_asu import TouchASUConfig
 
@@ -49,49 +47,61 @@ def freeze_model(model):
 class TouchASU(PreTrainedModel):
     """ LLM based Automatic Speech Understanding
     """
-    config_class = TouchASUConfig
     model_type = 'touch_asu'
+    config_class = TouchASUConfig
     supports_gradient_checkpointing = True
 
     def __init__(self, config: TouchASUConfig):
-        llm_config = transformers.AutoConfig.from_pretrained(
-            config.llm_model_name_or_path)
-        llm_config.use_cache = True
-        super().__init__(llm_config)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        # device = "cpu" if torch.cuda.is_available() else "cpu"
-        print(config.wenet_model_name_or_path)
-        encoder = wenet.load_model_pt(config.wenet_model_name_or_path)
-        self.encoder = encoder.to(device)
-        # self.llm = AutoModelForCausalLM.from_pretrained(
-        #     config.llm_model_name_or_path,
-        #     config=llm_config,
-        #     torch_dtype='auto',
-        #     attn_implementation="flash_attention_2",  # or "flex_attention"
-        # )
-        # encoder_dim = encoder.encoder.output_size()
-        # config.hidden_size = llm_config.hidden_size  # for deepseed training
-        # self.projector = ProjectorCov1d(config, encoder_dim, config.hidden_size)
-        # total_params = sum(p.numel() for p in self.projector.parameters())
-        # print('Projector total params: {:.2f}M'.format(total_params / 1024 /
-        #                                                1024))
-        # if config.lora_config is not None:
-        #     lora_config = LoraConfig(**config.lora_config)
-        #     self.llm = get_peft_model(self.llm, lora_config)
-        #     self.llm.print_trainable_parameters()
-        # self.freeze_encoder()
-        # self._keys_to_ignore_on_save = set()
-        # # Do not save the parameter of llm and speech encoder
-        # if config.lora_config is not None:
-        #     for k in self.llm.state_dict().keys():
-        #         if list(self.llm.peft_config.keys())[0] not in k:
-        #             self._keys_to_ignore_on_save.add('llm.' + k)
-        # else:
-        #     for k in self.llm.state_dict().keys():
-        #         self._keys_to_ignore_on_save.add('llm.' + k)
-        #     self.freeze_llm()
-        # for k in self.encoder.state_dict().keys():
-        #     self._keys_to_ignore_on_save.add('encoder.' + k)
+        super().__init__(config)
+        llm_config = AutoConfig.from_pretrained(config.llm_model_name_or_path)
+        self.llm = AutoModelForCausalLM.from_pretrained(
+            config.llm_model_name_or_path,
+            config=llm_config,
+            torch_dtype='auto',
+            attn_implementation="flash_attention_2",  # or "flex_attention"
+        )
+        self.encoder = wenet.load_model_pt(config.wenet_model_name_or_path)
+        encoder_dim = self.encoder.encoder.output_size()
+        config.hidden_size = llm_config.hidden_size  # for deepseed training
+        self.projector = ProjectorCov1d(config, encoder_dim,
+                                        llm_config.hidden_size)
+        total_params = sum(p.numel() for p in self.projector.parameters())
+        print('Projector total params: {:.2f}M'.format(total_params / 1024 /
+                                                       1024))
+        if config.lora_config is not None:
+            lora_config = LoraConfig(**config.lora_config)
+            self.llm = get_peft_model(self.llm, lora_config)
+            self.llm.print_trainable_parameters()
+
+        self.freeze_encoder()
+        self._keys_to_ignore_on_save = set()
+        # Do not save the parameter of llm and speech encoder
+        if config.lora_config is not None:
+            for k in self.llm.state_dict().keys():
+                if list(self.llm.peft_config.keys())[0] not in k:
+                    self._keys_to_ignore_on_save.add('llm.' + k)
+        else:
+            for k in self.llm.state_dict().keys():
+                self._keys_to_ignore_on_save.add('llm.' + k)
+            self.freeze_llm()
+        for k in self.encoder.state_dict().keys():
+            self._keys_to_ignore_on_save.add('encoder.' + k)
+
+    def tie_weights(self):
+        return self.llm.tie_weights()
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
+                        **kwargs):
+        """ The default `from_pretrained` does not init the parameters
+            of `self.llm` and `self.encoder`, so we custom it.
+        """
+        config = TouchASUConfig.from_pretrained(pretrained_model_name_or_path)
+        model = cls(config)
+        weights_path = f"{pretrained_model_name_or_path}/model.safetensors"
+        state_dict = safetensors.torch.load_file(weights_path)
+        model.load_state_dict(state_dict, strict=False)
+        return model
 
     def get_speech_embeddings(self, audio_features, audio_features_lengths):
         speech_emb, mask = self.encoder._forward_encoder(
@@ -186,10 +196,6 @@ class TouchASU(PreTrainedModel):
 
     def freeze_llm(self):
         freeze_model(self.llm)
-
-    def load_projector(self, projector_path):
-        projector_state_dict = safetensors.torch.load_file(projector_path)
-        self.load_state_dict(projector_state_dict, strict=False)
 
     def init_tokenizer(self):
         tokenizer = AutoTokenizer.from_pretrained(

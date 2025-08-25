@@ -8,20 +8,16 @@ from dataclasses import dataclass, field
 from typing import Any, Union
 
 import torch
-import transformers
 from torch import nn
-from transformers import AutoConfig, AutoModel
-from transformers import Trainer, TrainerCallback
+from transformers import (AutoConfig, AutoModel, HfArgumentParser, Trainer,
+                          TrainerCallback, TrainingArguments)
 
 from west.dataset.dataset import DataArguments, SpeechDataset
 from west.dataset.extractor import Extractor
 
-import west.models as model
-# from west.models.model import Model, ModelArgs
-
 
 @dataclass
-class TrainingArguments(transformers.TrainingArguments):
+class TrainingArguments(TrainingArguments):
     optim: str = field(default="adafactor")
     model_config_path: str = field(default='')
 
@@ -107,13 +103,10 @@ def main():
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    parser = transformers.HfArgumentParser(
-        (DataArguments, TrainingArguments))
+    parser = HfArgumentParser((DataArguments, TrainingArguments))
     data_args, training_args = parser.parse_args_into_dataclasses()
     config = AutoConfig.from_pretrained(training_args.model_config_path)
-    print(config)
     model = AutoModel.from_config(config)
-    print(model)
     tokenizer = model.init_tokenizer()
     extractor = Extractor.get_class(model.model_type)(tokenizer)
 

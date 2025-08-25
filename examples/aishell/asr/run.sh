@@ -12,8 +12,8 @@ speech_encoder=/jfs-hdfs/user/binbin.zhang/models/wenet/wenetspeech/u2pp_conform
 
 stage=train # data/train/decode
 data=data
-dir=exp/test
-steps=200  # training steps
+dir=exp/Qwen-1.5B-Instruct-wenetspeech-encoder_pack8192
+steps=2000  # training steps
 
 # Note: Change your model settings in `conf/touch_asu_config.json`
 
@@ -24,12 +24,11 @@ fi
 
 
 if [ $stage == "train" ] || [ $stage == "all" ]; then
-        # --pack_size 8192 \
     torchrun --standalone --nnodes=1 --nproc_per_node=$num_gpus west/bin/train.py \
         --model_config_path conf/touch_asu_config.json \
-        --data_path $data/train.sft_500.jsonl \
+        --data_path $data/train.jsonl \
         --output_dir $dir \
-        --batch_size 8 \
+        --pack_size 8192 \
         --bf16 True \
         --max_steps $steps \
         --num_data_cycles 1000 \
@@ -50,7 +49,7 @@ if [ $stage == "train" ] || [ $stage == "all" ]; then
         --dataloader_num_workers 2 \
         --dataloader_prefetch_factor 10 \
         --save_total_limit 10000 \
-        --deepspeed conf/ds_config_zero3.json \
+        --deepspeed conf/ds_config_zero2.json \
         --accelerator_config conf/accelerator_config.json
 fi
 
@@ -58,12 +57,8 @@ fi
 if [ $stage == "decode" ] || [ $stage == "all" ]; then
     mdir=$dir/checkpoint-${steps}
     python west/bin/decode.py \
-        --model_type "touch_asu" \
-        --llm_model_name_or_path $llm \
-        --wenet_model_name_or_path $speech_encoder \
-        --projector_model_path $mdir/model.safetensors \
-        --encoder_projector_ds_rate 2 \
-        --data_path $data/chinese_qa.jsonl \
+        --data_path $data/test.jsonl \
+        --model_dir $PWD/$mdir \
         --result_path $mdir/result.txt
     paste <(awk '{print $1}' $data/test.text) $mdir/result.txt > $mdir/result.hyp
     python tools/compute-wer.py --char=1 --v=1 \
