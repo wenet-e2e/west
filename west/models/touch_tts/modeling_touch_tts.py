@@ -1,6 +1,5 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 
-from dataclasses import dataclass, field
 from typing import Optional
 
 import s3tokenizer
@@ -9,55 +8,49 @@ import torch
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
 
-from west.models.model import Model, ModelArgs
+from .configuration_touch_tts import TouchTTSConfig
 
 
-@ModelArgs.register
-@dataclass
-class TouchTTSArgs:
-    s3tokenizer_model_name_or_path: Optional[str] = "speech_tokenizer_v1_25hz"
-    llm_model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-7B")
-    num_speech_tokens: int = 4096
-    codec_llm_model_path: Optional[str] = field(default='')
-
-
-def freeze_model(model):
-    for _, param in model.named_parameters():
-        param.requires_grad = False
-
-
-class TouchTTS(PreTrainedModel, Model):
+class TouchTTS(PreTrainedModel):
     """ LLM based TTS, text in, speech token out
     """
     model_type = 'touch_tts'
+    config_class = TouchTTSConfig
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: TouchTTSArgs):
-        # Load llm model and tokenizer
+    def __init__(self, config: TouchTTSConfig):
+        super().__init__(config)
         llm_config = AutoConfig.from_pretrained(config.llm_model_name_or_path)
-        llm_config.use_cache = False
-        # TODO(Binbin Zhang): now we just reuse LLM config, will try to figure
-        # out the impact on training and generation.
-        super().__init__(llm_config)
+        config.hidden_size = llm_config.hidden_size  # for deepseed training
         speech_tokenizer = s3tokenizer.load_model(
             'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.speech_tokenizer = speech_tokenizer.to(device)
-        # TODO(Binbin Zhang): rethink the pretrain and training model init
         self.llm = AutoModelForCausalLM.from_pretrained(
             config.llm_model_name_or_path,
             config=llm_config,
             torch_dtype='auto',
             attn_implementation="flash_attention_2",  # or "flex_attention"
         )
-        if config.codec_llm_model_path:
-            self.load_llm(config.codec_llm_model_path)
         self.speech_tokenizer.freeze()
         self._keys_to_ignore_on_save = set()
         for k in self.speech_tokenizer.state_dict().keys():
             self._keys_to_ignore_on_save.add('speech_tokenizer.' + k)
         # We assume the last 4096 units are speech tokens
         self.speech_code_start_idx = llm_config.vocab_size - 4096
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
+                        **kwargs):
+        """ The default `from_pretrained` does not init the parameters
+            of `self.llm` and `self.speech_tokenizer`, so we custom it.
+        """
+        config = TouchTTSConfig.from_pretrained(pretrained_model_name_or_path)
+        model = cls(config)
+        weights_path = f"{pretrained_model_name_or_path}/model.safetensors"
+        state_dict = safetensors.torch.load_file(weights_path)
+        model.load_state_dict(state_dict, strict=False)
+        return model
 
     def reorg_ids(
         self,
@@ -142,14 +135,9 @@ class TouchTTS(PreTrainedModel, Model):
         )
         return model_outputs
 
-    def load_llm(self, llm_path):
-        print(f'Loading {llm_path}')
-        llm_state_dict = safetensors.torch.load_file(llm_path)
-        self.load_state_dict(llm_state_dict, strict=False)
-
-    @staticmethod
-    def init_tokenizer(config):
-        tokenizer = AutoTokenizer.from_pretrained(config.llm_model_name_or_path)
-        if 'Qwen' in config.llm_model_name_or_path:
+    def init_tokenizer(self):
+        tokenizer = AutoTokenizer.from_pretrained(
+            self.config.llm_model_name_or_path)
+        if 'Qwen' in self.config.llm_model_name_or_path:
             tokenizer.bos_token = tokenizer.eos_token
         return tokenizer
