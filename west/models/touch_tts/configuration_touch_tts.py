@@ -1,7 +1,5 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 
-from typing import Any, Dict, Optional
-
 from transformers import PretrainedConfig
 
 
