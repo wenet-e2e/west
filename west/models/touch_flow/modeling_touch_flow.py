@@ -3,7 +3,6 @@
 
 import math
 import random
-from dataclasses import dataclass, field
 from typing import Optional
 
 import s3tokenizer
@@ -14,24 +13,9 @@ import wespeaker
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
 
-from west.models.model import Model, ModelArgs
 from west.utils.mask import make_pad_mask, non_causal_mask
 
-
-@ModelArgs.register
-@dataclass
-class TouchFlowArgs:
-    s3tokenizer_model_name_or_path: Optional[str] = "speech_tokenizer_v1_25hz"
-    speaker_model_path: Optional[str] = ""
-    text_tokenizer_path: Optional[str] = ""
-    flow_llm_config_path: Optional[str] = field(default="Qwen/Qwen2-7B")
-    num_speech_tokens: int = 4096
-    flow_model_path: Optional[str] = field(default='')
-    t_scheduler: Optional[str] = field(default="cosine")
-    sigma_min: float = 1e-6
-    training_cfg_rate: float = 0.2
-    inference_cfg_rate: float = 0.7
-    n_timesteps: int = 5
+from .configuration_touch_flow import TouchFlowConfig
 
 
 class SinusoidalPosEmb(torch.nn.Module):
@@ -59,22 +43,24 @@ def freeze_model(model):
         param.requires_grad = False
 
 
-class TouchFlow(PreTrainedModel, Model):
+class TouchFlow(PreTrainedModel):
     """flow model based on huggingface transformers"""
     model_type = 'touch_flow'
+    config_class = TouchFlowConfig
     supports_gradient_checkpointing = True
 
-    def __init__(self, args):
-        config = AutoConfig.from_pretrained(args.flow_llm_config_path)
+    def __init__(self, config: TouchFlowConfig):
         super().__init__(config)
+        llm_config = AutoConfig.from_pretrained(config.llm_config_path)
+        config.hidden_size = llm_config.hidden_size
         device = "cuda" if torch.cuda.is_available() else "cpu"
         speech_tokenizer = s3tokenizer.load_model(
-            'speech_tokenizer_v1_25hz', args.s3tokenizer_model_name_or_path)
+            'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
         self.speech_tokenizer = speech_tokenizer.to(device)
-        speaker_model = wespeaker.load_model_pt(args.speaker_model_path)
+        speaker_model = wespeaker.load_model_pt(config.speaker_model_path)
         self.speaker_model = speaker_model.to(device)
         # Load llm model and tokenizer
-        self.llm = AutoModelForCausalLM.from_config(config=config)
+        self.llm = AutoModelForCausalLM.from_config(config=llm_config)
         self._keys_to_ignore_on_save = set()
         for k in self.speech_tokenizer.state_dict().keys():
             self._keys_to_ignore_on_save.add('speech_tokenizer.' + k)
@@ -99,16 +85,26 @@ class TouchFlow(PreTrainedModel, Model):
         )
         self.input_projector = torch.nn.Linear(mel_dim * 5, hidden_size)
         self.mel_projector = torch.nn.Linear(hidden_size, mel_dim)
-        self.args = args
-        if args.flow_model_path:
-            state_dict = safetensors.torch.load_file(args.flow_model_path)
-            self.load_state_dict(state_dict, strict=False)
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
+                        **kwargs):
+        """ The default `from_pretrained` does not init the parameters of
+            `self.speech_tokenizer` and `self.speaker_model`, so we custom it.
+        """
+        config = TouchFlowConfig.from_pretrained(pretrained_model_name_or_path)
+        model = cls(config)
+        weights_path = f"{pretrained_model_name_or_path}/model.safetensors"
+        state_dict = safetensors.torch.load_file(weights_path)
+        model.load_state_dict(state_dict, strict=False)
+        return model
 
     def interpolate(self, x, ylens=None):
         # x in (B, T, D)
         mask = (~make_pad_mask(ylens)).to(x).unsqueeze(-1)
         x = F.interpolate(x.transpose(1, 2).contiguous(),
-                          size=ylens.max(), mode='linear')
+                          size=ylens.max(),
+                          mode='linear')
         out = x.transpose(1, 2).contiguous()
         return out * mask, ylens
 
@@ -151,7 +147,7 @@ class TouchFlow(PreTrainedModel, Model):
             mel_cond[i, :index] = mel_vocoder[i, :index]
         # Condition randome timestep
         t = torch.rand([B, 1, 1], device=device, dtype=mel_vocoder.dtype)
-        if self.args.t_scheduler == 'cosine':
+        if self.config.t_scheduler == 'cosine':
             t = 1 - torch.cos(t * 0.5 * torch.pi)
         t_cond = self.time_encoder(
             self.time_embeddings(t.squeeze()).to(t.dtype))  # (B, M)
@@ -159,9 +155,9 @@ class TouchFlow(PreTrainedModel, Model):
         # during training, we randomly drop condition to trade off model
         # coverage and sample fidelity.
         # cfg is short for `Classifier-Free Guidance`
-        if self.args.training_cfg_rate > 0:
+        if self.config.training_cfg_rate > 0:
             cfg_mask = torch.rand(B,
-                                  device=device) > self.args.training_cfg_rate
+                                  device=device) > self.config.training_cfg_rate
             spk_cond = spk_cond * cfg_mask.view(-1, 1, 1)
             token_cond = token_cond * cfg_mask.view(-1, 1, 1)
             mel_cond = mel_cond * cfg_mask.view(-1, 1, 1)
@@ -169,14 +165,14 @@ class TouchFlow(PreTrainedModel, Model):
         # in `https://arxiv.org/abs/2210.02747`
         p0 = torch.randn_like(mel_vocoder)  # random noise
         p1 = mel_vocoder
-        pt = (1 - (1 - self.args.sigma_min) * t) * p0 + t * p1
-        ut = p1 - (1 - self.args.sigma_min) * p0
+        pt = (1 - (1 - self.config.sigma_min) * t) * p0 + t * p1
+        ut = p1 - (1 - self.config.sigma_min) * p0
         inputs = torch.cat([pt, token_cond, t_cond, spk_cond, mel_cond],
                            dim=-1)  # (B, T, 5*M)
         inputs = self.input_projector(inputs)  # (B, T, D)
         mask = ~make_pad_mask(mel_vocoder_lengths).to(device)  # (B, T)
         att_mask = non_causal_mask(mel_vocoder_lengths).to(device)  # (B, T, T)
-        att_mask = att_mask.unsqueeze(1)  # (B, 1, T, T)
+        att_mask = att_mask.unsqueeze(1).float()  # (B, 1, T, T)
         result = self.llm.model(inputs_embeds=inputs,
                                 attention_mask=att_mask,
                                 return_dict=True)
@@ -226,12 +222,12 @@ class TouchFlow(PreTrainedModel, Model):
         # Condition t
         t_span = torch.linspace(0,
                                 1,
-                                self.args.n_timesteps + 1,
+                                self.config.n_timesteps + 1,
                                 device=device,
                                 dtype=torch.float32)  # (n_timesteps+1, )
         # Sample first noise, pt = p0 = noise
         pt = torch.randn_like(token_cond)
-        if self.args.t_scheduler == 'cosine':
+        if self.config.t_scheduler == 'cosine':
             t_span = 1 - torch.cos(t_span * 0.5 * torch.pi)
         t, dt = t_span[0], t_span[1] - t_span[0]
         t = t.unsqueeze(dim=0)  # (B, 1)
@@ -241,7 +237,7 @@ class TouchFlow(PreTrainedModel, Model):
         x_in[0:1, :, 4 * M:5 * M] = mel_cond
         vocoder_lengths = torch.tensor([T], dtype=torch.long, device=device)
         att_mask = non_causal_mask(vocoder_lengths).to(device)  # (B, T, T)
-        att_mask = att_mask.unsqueeze(1)  # (B, 1, T, T)
+        att_mask = att_mask.unsqueeze(1).float()  # (B, 1, T, T)
         for step in range(1, len(t_span)):
             x_in[:, :, 0:M] = pt
             t_cond = self.time_encoder(
@@ -253,7 +249,7 @@ class TouchFlow(PreTrainedModel, Model):
                                     attention_mask=att_mask,
                                     return_dict=True)
             vt = self.mel_projector(result.last_hidden_state)  # (2, T, M)
-            alpha = self.args.inference_cfg_rate
+            alpha = self.config.inference_cfg_rate
             # classifier free guidance (CFG) inference, see paper
             # Voicebox: Text-Guided Multilingual Universal Speech Generation
             # at Scale, https://arxiv.org/abs/2306.15687
@@ -264,9 +260,9 @@ class TouchFlow(PreTrainedModel, Model):
                 dt = t_span[step + 1] - t
         return pt[:, mel_len1:, :]
 
-    @staticmethod
-    def init_tokenizer(args):
-        tokenizer = AutoTokenizer.from_pretrained(args.text_tokenizer_path)
-        if 'Qwen' in args.llm_model_name_or_path:
+    def init_tokenizer(self):
+        tokenizer = AutoTokenizer.from_pretrained(
+            self.config.text_tokenizer_path)
+        if 'Qwen' in self.config.text_tokenizer_path:
             tokenizer.bos_token = tokenizer.eos_token
         return tokenizer

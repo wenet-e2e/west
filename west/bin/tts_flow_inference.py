@@ -5,30 +5,28 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import torch
-import transformers
 from accelerate import Accelerator
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from transformers import AutoModel, HfArgumentParser
 
 from west.dataset.dataset import DataArguments, SpeechDataset
 from west.dataset.extractor import Extractor
-from west.models.model import Model, ModelArgs
 
 
 @dataclass
 class DecodeArguments:
+    model_dir: str = field(default='')
     save_dir: str = field(default=None, metadata={"help": "save dir"})
 
 
 def main():
-    parser = transformers.HfArgumentParser(
-        (ModelArgs, DataArguments, DecodeArguments))
-    model_args, data_args, decode_args = parser.parse_args_into_dataclasses()
-    model = Model.get_model(model_args)
-    tokenizer = model.init_tokenizer(model_args)
-    extractor = Extractor.get_class(model_args.model_type)(tokenizer,
-                                                           inference=True)
-    test_dataset = SpeechDataset(extractor, data_args, inference=True)
+    parser = HfArgumentParser((DataArguments, DecodeArguments))
+    data_args, decode_args = parser.parse_args_into_dataclasses()
+    model = AutoModel.from_pretrained(decode_args.model_dir)
+    tokenizer = model.init_tokenizer()
+    extractor = Extractor.get_class(model.model_type)(tokenizer, inference=True)
+    test_dataset = SpeechDataset(extractor, data_args)
     data_loader = DataLoader(test_dataset, collate_fn=lambda x: x[0])
     if torch.cuda.is_available():
         model = model.cuda()
