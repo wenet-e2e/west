@@ -78,18 +78,21 @@ class SpeechDataset(IterableDataset):
 
     def filter(self, data):
         for item in data:
-            waveform, sample_rate = torchaudio.load(item['wav'])
-            item['wav'] = waveform
-            item['sample_rate'] = sample_rate
-            if self.inference:
+            if 'messages' in item:  # OpenAI role-content based SFT data
                 yield item
-            else:
-                duration = waveform.shape[1] / sample_rate
-                if duration > self.data_args.max_speech_seconds:
-                    continue
-                if duration < self.data_args.min_speech_seconds:
-                    continue
-                yield item
+            else:  # Speech pretraining data
+                waveform, sample_rate = torchaudio.load(item['wav'])
+                item['wav'] = waveform
+                item['sample_rate'] = sample_rate
+                if self.inference:
+                    yield item
+                else:
+                    duration = waveform.shape[1] / sample_rate
+                    if duration > self.data_args.max_speech_seconds:
+                        continue
+                    if duration < self.data_args.min_speech_seconds:
+                        continue
+                    yield item
 
     def _read_one(self):
         try:
