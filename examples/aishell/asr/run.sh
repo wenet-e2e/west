@@ -25,7 +25,7 @@ fi
 
 if [ $stage == "train" ] || [ $stage == "all" ]; then
     torchrun --standalone --nnodes=1 --nproc_per_node=$num_gpus west/bin/train.py \
-        --model_config_path conf/touch_asu_config.json \
+        --model_config_or_dir conf/touch_asu_config.json \
         --data_path $data/train.jsonl \
         --output_dir $dir \
         --pack_size 8192 \

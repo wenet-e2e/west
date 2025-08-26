@@ -3,6 +3,7 @@
 # https://github.com/QwenLM/Qwen2/blob/main/examples/sft/finetune.py
 
 import logging
+import os
 import pathlib
 from dataclasses import dataclass, field
 from typing import Any, Union
@@ -19,7 +20,7 @@ from west.dataset.extractor import Extractor
 @dataclass
 class TrainingArguments(TrainingArguments):
     optim: str = field(default="adafactor")
-    model_config_path: str = field(default='')
+    model_config_or_dir: str = field(default='')
 
 
 class MyTrainer(Trainer):
@@ -105,8 +106,11 @@ def main():
     )
     parser = HfArgumentParser((DataArguments, TrainingArguments))
     data_args, training_args = parser.parse_args_into_dataclasses()
-    config = AutoConfig.from_pretrained(training_args.model_config_path)
-    model = AutoModel.from_config(config)
+    if os.path.isfile(training_args.model_config_or_dir):  # init from config
+        config = AutoConfig.from_pretrained(training_args.model_config_or_dir)
+        model = AutoModel.from_config(config)
+    else:  # load from pretrained
+        model = AutoModel.from_pretrained(training_args.model_config_or_dir)
     tokenizer = model.init_tokenizer()
     extractor = Extractor.get_class(model.model_type)(tokenizer)
 
