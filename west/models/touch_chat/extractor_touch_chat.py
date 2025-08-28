@@ -13,11 +13,11 @@ from west.models.touch_asu import ExtractorTouchASU
 
 class ExtractorTouchChat(Extractor):
     model_type = 'touch_chat'
-    fields_batch_static = {'audio_offsets', 'talker_token_offsets'}
+    fields_batch_static = {'audio_offsets', 'talker_offsets'}
     fields_batch_dynamic = {
-        'audio_features', 'input_ids', 'labels', 'talker_mel_features'
+        'audio_features', 'input_ids', 'labels', 'talker_features'
     }
-    fields_pack_offset = {'audio_offsets', 'talker_token_offsets'}
+    fields_pack_offset = {'audio_offsets', 'talker_offsets'}
 
     def __init__(self, tokenizer, inference=False):
         super().__init__(tokenizer, inference)
@@ -47,16 +47,19 @@ class ExtractorTouchChat(Extractor):
         mel = mel.transpose(0, 1)
         # There is 100 frames mel per second, and 25 tokens per second
         num_audio_token = math.ceil(mel.size(0) / 100.0 * 25)
-        ids_audio = torch.tensor([0] * num_audio_token, dtype=torch.long)
+        ids = [0] * num_audio_token + [self.tokenizer.eos_token_id]
+        ids_audio = torch.tensor(ids, dtype=torch.long)
         # We first ignore it in thinker, then override `tgt_audio` in talker
-        tgt_audio = torch.tensor([IGNORE_TOKEN_ID] * num_audio_token,
-                                 dtype=torch.long)
+        tgt = [IGNORE_TOKEN_ID] * num_audio_token + [
+            self.tokenizer.eos_token_id
+        ]
+        tgt_audio = torch.tensor(tgt, dtype=torch.long)
         if not self.inference:
             # Merge Thinker/Talker tokens in TouchChat
             thinker_input_ids = ret['input_ids']
             thinker_labels = ret['labels']
-            ret['talker_mel_features'] = mel
-            ret['talker_token_offsets'] = len(thinker_input_ids)
+            ret['talker_features'] = mel
+            ret['talker_offsets'] = len(thinker_input_ids)
             ret['input_ids'] = torch.cat((thinker_input_ids, ids_audio), dim=0)
             ret['labels'] = torch.cat((thinker_labels, tgt_audio), dim=0)
         return ret

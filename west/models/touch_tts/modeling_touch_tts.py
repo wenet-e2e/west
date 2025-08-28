@@ -60,6 +60,7 @@ class TouchTTS(PreTrainedModel):
         audio_features: Optional[torch.FloatTensor] = None,
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
+        input_embs: Optional[torch.LongTensor] = None,
     ):
         """ Extract speech codes by speech tokenizer, and reorg that in
             `input_ids`, `labels`
@@ -73,7 +74,15 @@ class TouchTTS(PreTrainedModel):
                 i, :speech_codes_lens[i]] + self.speech_code_start_idx
             input_ids[b, s:e] = ids
             labels[b, s:e] = ids
-        return input_ids, labels
+        text_embs = self.llm.get_input_embeddings()(input_ids)
+        if input_embs is None:
+            return text_embs, labels
+        else:  # replace speech token emb
+            for i in range(audio_features.size(0)):
+                b = batch_idx[i]
+                s, e = audio_offsets[i], audio_offsets[i] + speech_codes_lens[i]
+                input_embs[b, s:e] = text_embs[b, s:e]
+            return input_embs, labels
 
     @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
     def forward(
@@ -86,12 +95,14 @@ class TouchTTS(PreTrainedModel):
         audio_features: Optional[torch.FloatTensor] = None,
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
+        input_embs: Optional[torch.FloatTensor] = None,
         **kwargs,
     ):
-        input_ids, labels = self.reorg_ids(input_ids, labels, audio_offsets,
-                                           audio_features,
-                                           audio_features_lengths, batch_idx)
-        out = self.llm(input_ids=input_ids,
+        input_embs, labels = self.reorg_ids(input_ids, labels, audio_offsets,
+                                            audio_features,
+                                            audio_features_lengths, batch_idx,
+                                            input_embs)
+        out = self.llm(inputs_embeds=input_embs,
                        attention_mask=attention_mask,
                        labels=labels,
                        position_ids=position_ids,
