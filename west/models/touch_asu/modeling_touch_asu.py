@@ -168,6 +168,7 @@ class TouchASU(PreTrainedModel):
         batch_idx: Optional[torch.LongTensor] = None,
         eos_token_id=None,
         decode_config=None,
+        **kwargs,
     ):
         inputs_embeds = self.compute_mix_embedding(
             input_ids,
@@ -179,11 +180,10 @@ class TouchASU(PreTrainedModel):
         model_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            do_sample=False,
-            top_p=1.0,
-            num_beams=decode_config.num_beams,
-            max_new_tokens=decode_config.max_new_tokens,
+            do_sample=False,  # TODO(Binbin Zhang): Fix me
+            top_p=1.0,  # TODO(Binbin Zhang): Fix me
             eos_token_id=eos_token_id,
+            **kwargs,
         )
         return model_outputs
 

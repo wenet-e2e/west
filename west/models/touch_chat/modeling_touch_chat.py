@@ -91,9 +91,50 @@ class TouchChat(PreTrainedModel):
                           audio_features=talker_features,
                           audio_features_lengths=talker_features_lengths,
                           batch_idx=batch_idx,
-                          input_embs=hidden_embs,
+                          inputs_embeds=hidden_embs,
                           **kwargs)
         return out
 
+    @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    def generate(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        audio_offsets: Optional[torch.LongTensor] = None,
+        audio_features: Optional[torch.FloatTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
+        batch_idx: Optional[torch.LongTensor] = None,
+        **kwargs,
+    ):
+        thinker_out = self.thinker.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            audio_offsets=audio_offsets,
+            audio_features=audio_features,
+            audio_features_lengths=audio_features_lengths,
+            batch_idx=batch_idx,
+            eos_token_id=self.eos_token_id,
+            return_dict_in_generate=True,
+            output_scores=True,
+            output_hidden_states=True)
+        text_lengths = torch.tensor([len(thinker_out.sequences)],
+                                    dtype=torch.long,
+                                    device=input_ids.device)
+        hidden_state = torch.cat([x[-1] for x in thinker_out.hidden_states],
+                                 dim=1)
+        hidden_embs = self.projector(hidden_state)
+        model_outputs = self.talker.generate(
+            text_lengths=text_lengths,
+            inputs_embeds=hidden_embs,
+            eos_token_id=self.eos_token_id,
+        )
+        return model_outputs
+
     def init_tokenizer(self):
-        return self.thinker.init_tokenizer()
+        # Here we assume thinker and talker shares the same tokenizer
+        tokenizer = self.thinker.init_tokenizer()
+        self.eos_token_id = tokenizer.convert_tokens_to_ids(
+            ['<|endoftext|>', '<|im_end|>'])
+        return tokenizer
