@@ -119,9 +119,11 @@ class TouchChat(PreTrainedModel):
             return_dict_in_generate=True,
             output_scores=True,
             output_hidden_states=True)
-        text_lengths = torch.tensor([len(thinker_out.sequences)],
+        text_lengths = torch.tensor([len(thinker_out.sequences[0])],
                                     dtype=torch.long,
                                     device=input_ids.device)
+        print('text len', text_lengths)
+        print(self.tokenizer.batch_decode(thinker_out.sequences.tolist()))
         hidden_state = torch.cat([x[-1] for x in thinker_out.hidden_states],
                                  dim=1)
         hidden_embs = self.projector(hidden_state)
@@ -130,11 +132,12 @@ class TouchChat(PreTrainedModel):
             inputs_embeds=hidden_embs,
             eos_token_id=self.eos_token_id,
         )
+        print(model_outputs)
         return model_outputs
 
     def init_tokenizer(self):
         # Here we assume thinker and talker shares the same tokenizer
-        tokenizer = self.thinker.init_tokenizer()
-        self.eos_token_id = tokenizer.convert_tokens_to_ids(
+        self.tokenizer = self.talker.init_tokenizer()
+        self.eos_token_id = self.tokenizer.convert_tokens_to_ids(
             ['<|endoftext|>', '<|im_end|>'])
-        return tokenizer
+        return self.tokenizer

@@ -6,9 +6,19 @@ import s3tokenizer
 import safetensors
 import torch
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                          PreTrainedModel)
+                          PreTrainedModel, LogitsProcessor)
 
 from .configuration_touch_tts import TouchTTSConfig
+
+
+class RestrictedLogitsProcessor(LogitsProcessor):
+    def __init__(self, eos):
+        self.eos = eos
+
+    def __call__(self, input_ids, scores):
+        scores[:, :self.eos] = -float('inf')
+        scores[:, self.eos+1:-4096] = -float('inf')
+        return scores
 
 
 class TouchTTS(PreTrainedModel):
@@ -135,6 +145,11 @@ class TouchTTS(PreTrainedModel):
             # There is no prompt token output if we use `inputs_embeds`
             # instead of `input_ids`
             inputs_embeds = self.llm.get_input_embeddings()(input_ids)
+        else:
+            bos = torch.tensor([[151666]], dtype=torch.long, device=inputs_embeds.device)
+            bos_embeds = self.llm.get_input_embeddings()(bos)
+            inputs_embeds = torch.cat((inputs_embeds, bos_embeds), dim=1)
+        logits_processor = RestrictedLogitsProcessor(151643)
         model_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
@@ -145,6 +160,7 @@ class TouchTTS(PreTrainedModel):
             min_new_tokens=min_length,
             max_new_tokens=max_length,
             eos_token_id=eos_token_id,
+            logits_processor=[logits_processor],
         )
         return model_outputs
 
