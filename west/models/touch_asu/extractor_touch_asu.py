@@ -9,7 +9,7 @@ from west.dataset.extractor import Extractor
 
 class ExtractorTouchASU(Extractor):
     model_type = 'touch_asu'
-    fields_batch_static = {'audio_offsets'}
+    fields_batch_static = {'audio_offsets', 'has_audio'}
     fields_batch_dynamic = {'audio_features', 'input_ids', 'labels'}
     fields_pack_offset = {'audio_offsets'}
 
@@ -37,39 +37,51 @@ class ExtractorTouchASU(Extractor):
             ]
 
         t0 = '<|im_start|>user\n'
-        t1 = '<|audio_eos|><|im_end|>\n' + '<|im_start|>assistant\n'
+        t1 = '<|im_end|>\n' + '<|im_start|>assistant\n'
         t2 = ''
+        has_audio = True
         for msg in messages:
             if msg['role'] == 'system':
                 t0 += msg['content']
             elif msg['role'] == 'user':
                 if isinstance(msg['content'], dict):
                     assert msg['content']['type'] == 'audio'
-                    t0 += '<|audio_bos|>'
                     audio = msg['content']['audio']
                 elif isinstance(msg['content'], list):
                     # Here we assume the 1st is text, 2nd is audio
                     assert len(msg['content']) == 2
                     t0 += msg['content'][0]['text']
-                    t0 += '<|audio_bos|>'
                     audio = msg['content'][1]['audio']
-                # Feature extraction
-                if isinstance(audio, str):  # path
-                    wav, sample_rate = torchaudio.load(audio)
+                elif isinstance(msg['content'], str):  # No audio
+                    t0 += msg['content']
+                    has_audio = False
+                if has_audio:
+                    t0 += '<|audio_bos|>'
+                    t1 = '<|audio_eos|>' + t1
+                    # Feature extraction
+                    if isinstance(audio, str):  # path
+                        wav, sample_rate = torchaudio.load(audio)
+                    else:
+                        wav, sample_rate = item['wav'], item['sample_rate']
+                    wav = torchaudio.transforms.Resample(sample_rate,
+                                                         16000)(wav)
+                    wav = wav * (1 << 15)
+                    mel = torchaudio.compliance.kaldi.fbank(
+                        wav,
+                        num_mel_bins=80,
+                        frame_length=25,
+                        frame_shift=10,
+                        dither=0.0,
+                        energy_floor=0.0,
+                        sample_frequency=16000)
+                    # Here 8 is the final subsampling rate
+                    ids_audio = [0] * (mel.size(0) // 8)
+                    tgt_audio = [IGNORE_TOKEN_ID] * len(ids_audio)
                 else:
-                    wav, sample_rate = item['wav'], item['sample_rate']
-                wav = torchaudio.transforms.Resample(sample_rate, 16000)(wav)
-                wav = wav * (1 << 15)
-                mel = torchaudio.compliance.kaldi.fbank(wav,
-                                                        num_mel_bins=80,
-                                                        frame_length=25,
-                                                        frame_shift=10,
-                                                        dither=0.0,
-                                                        energy_floor=0.0,
-                                                        sample_frequency=16000)
-                # Here 8 is the final subsampling rate
-                ids_audio = [0] * (mel.size(0) // 8)
-                tgt_audio = [IGNORE_TOKEN_ID] * len(ids_audio)
+                    # fake 1s mel feature
+                    mel = torch.zeros((100, 80), dtype=torch.float)
+                    ids_audio = []
+                    tgt_audio = []
 
             elif msg['role'] == 'assistant':
                 t2 = msg['content'] + '<|im_end|>\n'
@@ -89,4 +101,5 @@ class ExtractorTouchASU(Extractor):
             'labels': tgt_ids,
             'audio_features': mel,
             'audio_offsets': len(ids0) + 1,
+            'has_audio': has_audio,
         }

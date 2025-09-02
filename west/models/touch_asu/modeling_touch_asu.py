@@ -118,12 +118,14 @@ class TouchASU(PreTrainedModel):
         audio_features: Optional[torch.FloatTensor] = None,
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
+        has_audio: Optional[torch.BoolTensor] = None,
     ):
         text_emb = self.llm.get_input_embeddings()(input_ids)
         speech_emb, speech_emb_lens = self.get_speech_embeddings(
             audio_features, audio_features_lengths)
         inputs_embeds = text_emb
         for i in range(audio_features.size(0)):
+            if not has_audio[i]: continue
             b = batch_idx[i]
             s, e = audio_offsets[i], audio_offsets[i] + speech_emb_lens[i]
             inputs_embeds[b, s:e, :] = speech_emb[i, :speech_emb_lens[i], :]
@@ -140,6 +142,7 @@ class TouchASU(PreTrainedModel):
         audio_features: Optional[torch.FloatTensor] = None,
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
+        has_audio: Optional[torch.BoolTensor] = None,
         **kwargs,
     ):
         inputs_embeds = self.compute_mix_embedding(
@@ -148,6 +151,7 @@ class TouchASU(PreTrainedModel):
             audio_features,
             audio_features_lengths,
             batch_idx,
+            has_audio,
         )
         out = self.llm(inputs_embeds=inputs_embeds,
                        attention_mask=attention_mask,
@@ -166,6 +170,7 @@ class TouchASU(PreTrainedModel):
         audio_features: Optional[torch.FloatTensor] = None,
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
+        has_audio: Optional[torch.BoolTensor] = None,
         eos_token_id=None,
         decode_config=None,
         **kwargs,
@@ -176,6 +181,7 @@ class TouchASU(PreTrainedModel):
             audio_features,
             audio_features_lengths,
             batch_idx,
+            has_audio,
         )
         model_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
