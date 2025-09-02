@@ -131,6 +131,9 @@ class SpeechDataset(IterableDataset):
                             try:
                                 x['txt'] = x['txt'].decode('utf8')
                                 x['wav'] = io.BytesIO(x['wav'])
+                                if "messages" in x.keys():
+                                    x['messages'] = json.loads(
+                                        x['messages'].decode('utf8'))
                                 yield x
                             except Exception:
                                 logging.info(f'Dataset decode error, {line}')
@@ -244,9 +247,9 @@ if __name__ == '__main__':
     print(tokenizer.bos_token_id)
     data_args = DataArguments
     data_args.data_path = 'data/train.jsonl'
-    data_args.extractor_type = 'tts_codec'
-    dataset = SpeechDataset(tokenizer, data_args)
+    data_args.extractor_type = 'touch_asu'
+    extractor = Extractor.get_class(data_args.extractor_type)(tokenizer)
+    dataset = SpeechDataset(extractor, data_args)
     for i, x in enumerate(dataset):
-        print(x)
         if i > 0:
             break
