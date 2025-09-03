@@ -13,7 +13,7 @@ from west.models.touch_asu import ExtractorTouchASU
 
 class ExtractorTouchChat(Extractor):
     model_type = 'touch_chat'
-    fields_batch_static = {'audio_offsets', 'talker_offsets'}
+    fields_batch_static = {'audio_offsets', 'talker_offsets', 'has_audio'}
     fields_batch_dynamic = {
         'audio_features', 'input_ids', 'labels', 'talker_features'
     }

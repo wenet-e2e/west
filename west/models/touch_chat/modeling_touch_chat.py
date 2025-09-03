@@ -35,10 +35,13 @@ class TouchChat(PreTrainedModel):
             nn.Linear(proj_dim, self.talker.config.hidden_size),
         )
         print(self.projector)
-        freeze_model(self.thinker)
         self._keys_to_ignore_on_save = set()
+        freeze_model(self.thinker)
         for k in self.thinker.state_dict().keys():
             self._keys_to_ignore_on_save.add('thinker.' + k)
+        # freeze_model(self.talker)
+        # for k in self.talker.state_dict().keys():
+        #     self._keys_to_ignore_on_save.add('talker.' + k)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
@@ -67,6 +70,7 @@ class TouchChat(PreTrainedModel):
         talker_features_lengths: Optional[torch.LongTensor] = None,
         talker_offsets: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
+        has_audio: Optional[torch.BoolTensor] = None,
         **kwargs,
     ):
         # TODO(Binbin Zhang): Whether to use loss of thinker
@@ -79,6 +83,7 @@ class TouchChat(PreTrainedModel):
             audio_features=audio_features,
             audio_features_lengths=audio_features_lengths,
             batch_idx=batch_idx,
+            has_audio=has_audio,
             output_hidden_states=True,  # return hidden states
             **kwargs)
         hidden_state = thinker_out.hidden_states[-1]  # last hidden
@@ -106,6 +111,7 @@ class TouchChat(PreTrainedModel):
         audio_features: Optional[torch.FloatTensor] = None,
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
+        has_audio: Optional[torch.BoolTensor] = None,
         **kwargs,
     ):
         thinker_out = self.thinker.generate(
@@ -115,6 +121,7 @@ class TouchChat(PreTrainedModel):
             audio_features=audio_features,
             audio_features_lengths=audio_features_lengths,
             batch_idx=batch_idx,
+            has_audio=has_audio,
             eos_token_id=self.eos_token_id,
             return_dict_in_generate=True,
             output_scores=True,
