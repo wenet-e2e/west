@@ -69,33 +69,3 @@ class ExtractorTouchChat(Extractor):
             ret['input_ids'] = torch.cat((thinker_input_ids, ids_audio), dim=0)
             ret['labels'] = torch.cat((thinker_labels, tgt_audio), dim=0)
             return ret
-
-
-if __name__ == '__main__':
-    from transformers import AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        '/bucket/output/jfs-hdfs/user/binbin.zhang/huggingface/hub/Qwen2-1.5B-Instruct'
-    )
-    tokenizer.bos_token = tokenizer.eos_token
-    extractor = ExtractorTouchChat(tokenizer)
-    item = {
-        "messages": [{
-            "role": "user",
-            "content": {
-                "type": "audio",
-                "audio":
-                "/jfs-hdfs/user/binbin.zhang/data/chinese_chat/wav_user/ruozhiba.1000_q_0-魔墨渊.wav",
-                "text": "你不说话谁知道你是哑巴？"
-            }
-        }, {
-            "role": "assistant",
-            "content": {
-                "type": "audio",
-                "audio":
-                "/jfs-hdfs/user/binbin.zhang/data/chinese_chat/wav_assistant/ruozhiba.1000_a_0-魔青桔Pro.wav",
-                "text": "医生。"
-            }
-        }]
-    }
-    print(extractor.extract(item))

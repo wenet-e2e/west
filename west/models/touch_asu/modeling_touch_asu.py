@@ -125,7 +125,8 @@ class TouchASU(PreTrainedModel):
             audio_features, audio_features_lengths)
         inputs_embeds = text_emb
         for i in range(audio_features.size(0)):
-            if not has_audio[i]: continue
+            if not has_audio[i]:
+                continue
             b = batch_idx[i]
             s, e = audio_offsets[i], audio_offsets[i] + speech_emb_lens[i]
             inputs_embeds[b, s:e, :] = speech_emb[i, :speech_emb_lens[i], :]
