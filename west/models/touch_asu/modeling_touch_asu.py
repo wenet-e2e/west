@@ -10,6 +10,8 @@ from torch import nn
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
 
+from west.utils.utils import freeze_module
+
 from .configuration_touch_asu import TouchASUConfig
 
 
@@ -37,11 +39,6 @@ class ProjectorCov1d(nn.Module):
         x = self.relu2(x)
         x = self.linear2(x)
         return x
-
-
-def freeze_model(model):
-    for _, param in model.named_parameters():
-        param.requires_grad = False
 
 
 class TouchASU(PreTrainedModel):
@@ -198,11 +195,11 @@ class TouchASU(PreTrainedModel):
         self.llm.enable_input_require_grads()
 
     def freeze_encoder(self):
-        freeze_model(self.encoder)
+        freeze_module(self.encoder)
         self.encoder.eval()
 
     def freeze_llm(self):
-        freeze_model(self.llm)
+        freeze_module(self.llm)
 
     def init_tokenizer(self):
         tokenizer = AutoTokenizer.from_pretrained(

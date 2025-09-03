@@ -14,6 +14,7 @@ from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
 
 from west.utils.mask import make_pad_mask, non_causal_mask
+from west.utils.utils import freeze_module
 
 from .configuration_touch_flow import TouchFlowConfig
 
@@ -36,11 +37,6 @@ class SinusoidalPosEmb(torch.nn.Module):
         emb = scale * x.unsqueeze(1) * emb.unsqueeze(0)  # (B, half_dim)
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)  # (B, dim)
         return emb
-
-
-def freeze_model(model):
-    for _, param in model.named_parameters():
-        param.requires_grad = False
 
 
 class TouchFlow(PreTrainedModel):
@@ -66,8 +62,8 @@ class TouchFlow(PreTrainedModel):
             self._keys_to_ignore_on_save.add('speech_tokenizer.' + k)
         for k in self.speaker_model.state_dict().keys():
             self._keys_to_ignore_on_save.add('speaker_model.' + k)
-        freeze_model(self.speech_tokenizer)
-        freeze_model(self.speaker_model)
+        freeze_module(self.speech_tokenizer)
+        freeze_module(self.speaker_model)
         self.vocab_size = self.llm.vocab_size
         mel_dim = 80
         hidden_size = config.hidden_size

@@ -7,12 +7,9 @@ import torch
 from torch import nn
 from transformers import AutoModel, PreTrainedModel
 
+from west.utils.utils import freeze_module
+
 from .configuration_touch_chat import TouchChatConfig
-
-
-def freeze_model(model):
-    for _, param in model.named_parameters():
-        param.requires_grad = False
 
 
 class TouchChat(PreTrainedModel):
@@ -36,10 +33,10 @@ class TouchChat(PreTrainedModel):
         )
         print(self.projector)
         self._keys_to_ignore_on_save = set()
-        freeze_model(self.thinker)
+        freeze_module(self.thinker)
         for k in self.thinker.state_dict().keys():
             self._keys_to_ignore_on_save.add('thinker.' + k)
-        # freeze_model(self.talker)
+        # freeze_module(self.talker)
         # for k in self.talker.state_dict().keys():
         #     self._keys_to_ignore_on_save.add('talker.' + k)
 
