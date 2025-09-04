@@ -4,14 +4,14 @@ from typing import Optional
 
 import torch
 from torch import nn
-from transformers import AutoModel, PreTrainedModel
+from transformers import AutoModel, GenerationMixin, PreTrainedModel
 
 from west.utils.utils import freeze_module
 
 from .configuration_touch_chat import TouchChatConfig
 
 
-class TouchChat(PreTrainedModel):
+class TouchChat(PreTrainedModel, GenerationMixin):
     """ LLM based end to end Chat.
         TouchChat consists of pretrained 'thinker' and 'talker'.
     """
@@ -99,7 +99,6 @@ class TouchChat(PreTrainedModel):
             audio_features_lengths=audio_features_lengths,
             batch_idx=batch_idx,
             has_audio=has_audio,
-            eos_token_id=self.eos_token_id,
             return_dict_in_generate=True,
             output_scores=True,
             output_hidden_states=True)
@@ -114,7 +113,6 @@ class TouchChat(PreTrainedModel):
         model_outputs = self.talker.generate(
             text_lengths=text_lengths,
             inputs_embeds=hidden_embs,
-            eos_token_id=self.eos_token_id,
         )
         print(model_outputs)
         return model_outputs
@@ -122,6 +120,4 @@ class TouchChat(PreTrainedModel):
     def init_tokenizer(self):
         # Here we assume thinker and talker shares the same tokenizer
         self.tokenizer = self.talker.init_tokenizer()
-        self.eos_token_id = self.tokenizer.convert_tokens_to_ids(
-            ['<|endoftext|>', '<|im_end|>'])
         return self.tokenizer

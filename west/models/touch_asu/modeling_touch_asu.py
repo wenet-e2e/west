@@ -7,7 +7,7 @@ import wenet
 from peft import LoraConfig, get_peft_model
 from torch import nn
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                          PreTrainedModel)
+                          GenerationMixin, PreTrainedModel)
 
 from west.utils.utils import freeze_module
 
@@ -40,7 +40,7 @@ class ProjectorCov1d(nn.Module):
         return x
 
 
-class TouchASU(PreTrainedModel):
+class TouchASU(PreTrainedModel, GenerationMixin):
     """ LLM based Automatic Speech Understanding
     """
     model_type = 'touch_asu'
@@ -145,8 +145,6 @@ class TouchASU(PreTrainedModel):
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
         has_audio: Optional[torch.BoolTensor] = None,
-        eos_token_id=None,
-        decode_config=None,
         **kwargs,
     ):
         inputs_embeds = self.compute_mix_embedding(
@@ -159,10 +157,7 @@ class TouchASU(PreTrainedModel):
         )
         model_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            do_sample=False,  # TODO(Binbin Zhang): Fix me
-            top_p=1.0,  # TODO(Binbin Zhang): Fix me
-            eos_token_id=eos_token_id,
+            generation_config=self.generation_config,
             **kwargs,
         )
         return model_outputs
@@ -182,8 +177,6 @@ class TouchASU(PreTrainedModel):
             self.config.llm_model_name_or_path,
             padding_side="right",
         )
-        if 'Qwen' in self.config.llm_model_name_or_path:
-            tokenizer.bos_token = tokenizer.eos_token
-        elif 'llama' in self.config.llm_model_name_or_path:
-            tokenizer.pad_token = '<|finetune_right_pad_id|>'
+        # We only support QWen now
+        tokenizer.bos_token = tokenizer.eos_token
         return tokenizer

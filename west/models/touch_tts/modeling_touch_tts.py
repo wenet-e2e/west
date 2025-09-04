@@ -5,12 +5,12 @@ from typing import Optional
 import s3tokenizer
 import torch
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                          PreTrainedModel)
+                          GenerationMixin, PreTrainedModel)
 
 from .configuration_touch_tts import TouchTTSConfig
 
 
-class TouchTTS(PreTrainedModel):
+class TouchTTS(PreTrainedModel, GenerationMixin):
     """ LLM based TTS, text in, speech token out
     """
     model_type = 'touch_tts'
@@ -104,8 +104,6 @@ class TouchTTS(PreTrainedModel):
         batch_idx: Optional[torch.LongTensor] = None,
         text_lengths: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        eos_token_id=None,
-        decode_config=None,
     ):
         token_length = text_lengths[0].item()
         min_length = token_length * 2
@@ -118,20 +116,13 @@ class TouchTTS(PreTrainedModel):
                                                    batch_idx)
         model_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            do_sample=True,
-            top_p=0.8,
-            top_k=10,
-            repetition_penalty=1.4,
+            generation_config=self.generation_config,
             min_new_tokens=min_length,
             max_new_tokens=max_length,
-            eos_token_id=eos_token_id,
         )
         return model_outputs
 
     def init_tokenizer(self):
         tokenizer = AutoTokenizer.from_pretrained(
             self.config.llm_model_name_or_path)
-        if 'Qwen' in self.config.llm_model_name_or_path:
-            tokenizer.bos_token = tokenizer.eos_token
         return tokenizer
