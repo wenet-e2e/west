@@ -56,11 +56,6 @@ class TouchFlow(PreTrainedModel):
         self.speaker_model = speaker_model.to(device)
         # Load llm model and tokenizer
         self.llm = AutoModelForCausalLM.from_config(config=llm_config)
-        self._keys_to_ignore_on_save = set()
-        for k in self.speech_tokenizer.state_dict().keys():
-            self._keys_to_ignore_on_save.add('speech_tokenizer.' + k)
-        for k in self.speaker_model.state_dict().keys():
-            self._keys_to_ignore_on_save.add('speaker_model.' + k)
         freeze_module(self.speech_tokenizer)
         freeze_module(self.speaker_model)
         self.vocab_size = self.llm.vocab_size
