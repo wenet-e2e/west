@@ -88,12 +88,12 @@ class ExtractorTouchASU(Extractor):
         # TODO(Binbin Zhang): Mutil-turn support
         ids0 = self.tokenizer.encode(t0)
         ids1 = self.tokenizer.encode(t1)
-        ids = [self.tokenizer.bos_token_id] + ids0 + ids_audio + ids1
-        tgt = [self.tokenizer.bos_token_id] + ids0 + tgt_audio + ids1
+        ids = ids0 + ids_audio + ids1
+        tgt = ids0 + tgt_audio + ids1
         if not self.inference:
             ids2 = self.tokenizer.encode(t2)
-            ids = ids + ids2 + [self.tokenizer.eos_token_id]
-            tgt = tgt + ids2 + [self.tokenizer.eos_token_id]
+            ids = ids + ids2
+            tgt = tgt + ids2
         input_ids = torch.tensor(ids, dtype=torch.int)
         tgt_ids = torch.tensor(tgt, dtype=torch.long)
         return {
