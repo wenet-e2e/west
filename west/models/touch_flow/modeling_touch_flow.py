@@ -6,7 +6,6 @@ import random
 from typing import Optional
 
 import s3tokenizer
-import safetensors
 import torch
 import torch.nn.functional as F
 import wespeaker
@@ -81,19 +80,6 @@ class TouchFlow(PreTrainedModel):
         )
         self.input_projector = torch.nn.Linear(mel_dim * 5, hidden_size)
         self.mel_projector = torch.nn.Linear(hidden_size, mel_dim)
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
-                        **kwargs):
-        """ The default `from_pretrained` does not init the parameters of
-            `self.speech_tokenizer` and `self.speaker_model`, so we custom it.
-        """
-        config = TouchFlowConfig.from_pretrained(pretrained_model_name_or_path)
-        model = cls(config)
-        weights_path = f"{pretrained_model_name_or_path}/model.safetensors"
-        state_dict = safetensors.torch.load_file(weights_path)
-        model.load_state_dict(state_dict, strict=False)
-        return model
 
     def interpolate(self, x, ylens=None):
         # x in (B, T, D)

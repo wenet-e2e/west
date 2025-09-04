@@ -3,7 +3,6 @@
 from typing import Optional
 
 import s3tokenizer
-import safetensors
 import torch
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
@@ -33,24 +32,8 @@ class TouchTTS(PreTrainedModel):
             attn_implementation="flash_attention_2",  # or "flex_attention"
         )
         self.speech_tokenizer.freeze()
-        self._keys_to_ignore_on_save = set()
-        for k in self.speech_tokenizer.state_dict().keys():
-            self._keys_to_ignore_on_save.add('speech_tokenizer.' + k)
         # We assume the last 4096 units are speech tokens
         self.speech_code_start_idx = llm_config.vocab_size - 4096
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
-                        **kwargs):
-        """ The default `from_pretrained` does not init the parameters
-            of `self.llm` and `self.speech_tokenizer`, so we custom it.
-        """
-        config = TouchTTSConfig.from_pretrained(pretrained_model_name_or_path)
-        model = cls(config)
-        weights_path = f"{pretrained_model_name_or_path}/model.safetensors"
-        state_dict = safetensors.torch.load_file(weights_path)
-        model.load_state_dict(state_dict, strict=False)
-        return model
 
     def reorg_ids(
         self,

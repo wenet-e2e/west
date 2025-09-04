@@ -2,7 +2,6 @@
 
 from typing import Optional
 
-import safetensors
 import torch
 from torch import nn
 from transformers import AutoModel, PreTrainedModel
@@ -32,26 +31,7 @@ class TouchChat(PreTrainedModel):
             nn.Linear(proj_dim, self.talker.config.hidden_size),
         )
         print(self.projector)
-        self._keys_to_ignore_on_save = set()
         freeze_module(self.thinker)
-        for k in self.thinker.state_dict().keys():
-            self._keys_to_ignore_on_save.add('thinker.' + k)
-        # freeze_module(self.talker)
-        # for k in self.talker.state_dict().keys():
-        #     self._keys_to_ignore_on_save.add('talker.' + k)
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
-                        **kwargs):
-        """ The default `from_pretrained` does not init the parameters
-            of `self.llm` and `self.encoder`, so we custom it.
-        """
-        config = TouchChatConfig.from_pretrained(pretrained_model_name_or_path)
-        model = cls(config)
-        weights_path = f"{pretrained_model_name_or_path}/model.safetensors"
-        state_dict = safetensors.torch.load_file(weights_path)
-        model.load_state_dict(state_dict, strict=False)
-        return model
 
     @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
     def forward(

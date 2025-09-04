@@ -2,7 +2,6 @@
 
 from typing import Optional
 
-import safetensors
 import torch
 import wenet
 from peft import LoraConfig, get_peft_model
@@ -71,34 +70,11 @@ class TouchASU(PreTrainedModel):
             self.llm.print_trainable_parameters()
 
         self.freeze_encoder()
-        self._keys_to_ignore_on_save = set()
-        # Do not save the parameter of llm and speech encoder
-        if config.lora_config is not None:
-            for k in self.llm.state_dict().keys():
-                if list(self.llm.peft_config.keys())[0] not in k:
-                    self._keys_to_ignore_on_save.add('llm.' + k)
-        else:
-            for k in self.llm.state_dict().keys():
-                self._keys_to_ignore_on_save.add('llm.' + k)
+        if config.lora_config is None:
             self.freeze_llm()
-        for k in self.encoder.state_dict().keys():
-            self._keys_to_ignore_on_save.add('encoder.' + k)
 
     def tie_weights(self):
         return self.llm.tie_weights()
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
-                        **kwargs):
-        """ The default `from_pretrained` does not init the parameters
-            of `self.llm` and `self.encoder`, so we custom it.
-        """
-        config = TouchASUConfig.from_pretrained(pretrained_model_name_or_path)
-        model = cls(config)
-        weights_path = f"{pretrained_model_name_or_path}/model.safetensors"
-        state_dict = safetensors.torch.load_file(weights_path)
-        model.load_state_dict(state_dict, strict=False)
-        return model
 
     def get_speech_embeddings(self, audio_features, audio_features_lengths):
         speech_emb, mask = self.encoder._forward_encoder(
