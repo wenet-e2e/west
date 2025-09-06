@@ -1,9 +1,7 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 
 import torch
-import torchaudio
 import wenet
-
 from transformers.trainer_pt_utils import LabelSmoother
 
 from west.dataset.extractor import Extractor

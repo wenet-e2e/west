@@ -9,7 +9,6 @@ from typing import Dict
 
 import torch
 import torch.distributed as dist
-import torchaudio
 import webdataset as wds
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import IterableDataset
