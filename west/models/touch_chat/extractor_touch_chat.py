@@ -19,9 +19,10 @@ class ExtractorTouchChat(Extractor):
     }
     fields_pack_offset = {'audio_offsets', 'talker_offsets'}
 
-    def __init__(self, tokenizer, inference=False):
-        super().__init__(tokenizer, inference)
-        self.asu_extractor = ExtractorTouchASU(tokenizer, inference)
+    def __init__(self, tokenizer, model_config, inference=False):
+        super().__init__(tokenizer, model_config, inference)
+        # TODO(Binbin Zhang): Fix me
+        self.asu_extractor = ExtractorTouchASU(tokenizer, model_config, inference)
         if self.inference:
             self.fields_batch_static.remove('talker_offsets')
             self.fields_batch_dynamic.remove('talker_features')

@@ -112,7 +112,7 @@ def main():
     else:  # load from pretrained
         model = AutoModel.from_pretrained(training_args.model_config_or_dir)
     tokenizer = model.init_tokenizer()
-    extractor = Extractor.get_class(model.model_type)(tokenizer)
+    extractor = Extractor.get_class(model.model_type)(tokenizer, config)
 
     print("Loading data...")
     train_dataset = SpeechDataset(extractor, data_args)

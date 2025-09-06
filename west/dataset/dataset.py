@@ -76,24 +76,6 @@ class SpeechDataset(IterableDataset):
             local_random = random.Random(epoch)
             local_random.shuffle(self.data_lists)
 
-    def filter(self, data):
-        for item in data:
-            if 'messages' in item:  # OpenAI role-content based SFT data
-                yield item
-            else:  # Speech pretraining data
-                waveform, sample_rate = torchaudio.load(item['wav'])
-                item['wav'] = waveform
-                item['sample_rate'] = sample_rate
-                if self.inference:
-                    yield item
-                else:
-                    duration = waveform.shape[1] / sample_rate
-                    if duration > self.data_args.max_speech_seconds:
-                        continue
-                    if duration < self.data_args.min_speech_seconds:
-                        continue
-                    yield item
-
     def _read_one(self):
         try:
             # world_size = dist.get_world_size()
@@ -216,8 +198,12 @@ class SpeechDataset(IterableDataset):
     def __iter__(self) -> Dict[str, torch.Tensor]:
         buffer = []
         total_length = 0
-        for item in self.filter(self._read_one()):
+        for item in self._read_one():
             data = self.extractor.extract(item)
+            # TODO(Binbin Zhang): move filter to extractor, if the data is not
+            # valid, extractor should return None
+            if data is None:
+                continue
             if self.mode == 'static' and len(buffer) == self.batch_size:
                 yield self._batch(buffer)
                 buffer = []

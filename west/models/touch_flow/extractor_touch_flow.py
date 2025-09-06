@@ -13,8 +13,8 @@ class ExtractorTouchFlow(Extractor):
 
     fields_batch_dynamic = {'mel_speaker', 'mel_token', 'mel_vocoder'}
 
-    def __init__(self, tokenizer, inference=False):
-        super().__init__(tokenizer, inference)
+    def __init__(self, tokenizer, model_config, inference=False):
+        super().__init__(tokenizer, model_config, inference)
         if self.inference:
             self.fields_batch_dynamic.add('llm_token')
 

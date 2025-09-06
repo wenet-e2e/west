@@ -56,7 +56,7 @@ class TouchASU(PreTrainedModel, GenerationMixin):
             torch_dtype='auto',
             attn_implementation="flash_attention_2",  # or "flex_attention"
         )
-        self.encoder = wenet.load_model_pt(config.wenet_model_name_or_path)
+        self.encoder = wenet.load_model(config.wenet_model_name_or_path)
         encoder_dim = self.encoder.encoder.output_size()
         config.hidden_size = llm_config.hidden_size  # for deepseed training
         self.projector = ProjectorCov1d(config, encoder_dim,

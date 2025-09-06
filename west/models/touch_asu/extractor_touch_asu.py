@@ -2,6 +2,8 @@
 
 import torch
 import torchaudio
+import wenet
+
 from transformers.trainer_pt_utils import LabelSmoother
 
 from west.dataset.extractor import Extractor
@@ -12,6 +14,13 @@ class ExtractorTouchASU(Extractor):
     fields_batch_static = {'audio_offsets', 'has_audio'}
     fields_batch_dynamic = {'audio_features', 'input_ids', 'labels'}
     fields_pack_offset = {'audio_offsets'}
+
+    def __init__(self, tokenizer, model_config, inference=False):
+        super().__init__(tokenizer, model_config, inference)
+        self.compute_feature, self.feature_dim = wenet.load_feature(
+            self.model_config.wenet_model_name_or_path)
+        self.ds_rate = (self.model_config.encoder_ds_rate *
+                        self.model_config.encoder_projector_ds_rate)
 
     def extract(self, item):
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
@@ -58,28 +67,13 @@ class ExtractorTouchASU(Extractor):
                 if has_audio:
                     t0 += '<|audio_bos|>'
                     t1 = '<|audio_eos|>' + t1
-                    # Feature extraction
-                    if isinstance(audio, str):  # path
-                        wav, sample_rate = torchaudio.load(audio)
-                    else:
-                        wav, sample_rate = item['wav'], item['sample_rate']
-                    wav = torchaudio.transforms.Resample(sample_rate,
-                                                         16000)(wav)
-                    wav = wav * (1 << 15)
-                    mel = torchaudio.compliance.kaldi.fbank(
-                        wav,
-                        num_mel_bins=80,
-                        frame_length=25,
-                        frame_shift=10,
-                        dither=0.0,
-                        energy_floor=0.0,
-                        sample_frequency=16000)
-                    # Here 8 is the final subsampling rate
-                    ids_audio = [0] * (mel.size(0) // 8)
+                    mel = self.compute_feature(audio)
+                    ids_audio = [0] * (mel.size(0) // self.ds_rate)
                     tgt_audio = [IGNORE_TOKEN_ID] * len(ids_audio)
                 else:
                     # fake 1s mel feature
-                    mel = torch.zeros((100, 80), dtype=torch.float)
+                    mel = torch.zeros((100, self.feature_dim),
+                                      dtype=torch.float)
                     ids_audio = []
                     tgt_audio = []
 
