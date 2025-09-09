@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import re, sys, unicodedata
 import codecs
+import json
+import sys
+import unicodedata
 
 remove_tag = True
 spacelist = [' ', '\t', '\r', '\n']
@@ -21,17 +23,20 @@ def characterize(string):
             i += 1
             continue
         cat1 = unicodedata.category(char)
-        #https://unicodebook.readthedocs.io/unicode.html#unicode-categories
-        if cat1 == 'Zs' or cat1 == 'Cn' or char in spacelist:  # space or not assigned
+        #  https://unicodebook.readthedocs.io/unicode.html#unicode-categories
+        if cat1 == 'Zs' or cat1 == 'Cn' or char in spacelist:
+            # space or not assigned
             i += 1
             continue
         if cat1 == 'Lo':  # letter-other
             res.append(char)
             i += 1
         else:
-            # some input looks like: <unk><noise>, we want to separate it to two words.
+            # some input looks like: <unk><noise>, we want to separate it to
+            # two words.
             sep = ' '
-            if char == '<': sep = '>'
+            if char == '<':
+                sep = '>'
             j = i + 1
             while j < len(string):
                 c = string[j]
@@ -46,7 +51,8 @@ def characterize(string):
 
 
 def stripoff_tags(x):
-    if not x: return ''
+    if not x:
+        return ''
     chars = []
     i = 0
     T = len(x)
@@ -210,9 +216,9 @@ class Calculator:
             elif self.space[i][j]['error'] == 'non':  # starting point
                 break
             else:  # shouldn't reach here
-                print(
-                    'this should not happen , i = {i} , j = {j} , error = {error}'
-                    .format(i=i, j=j, error=self.space[i][j]['error']))
+                print('this should not happen '
+                      'i = {i} , j = {j} , error = {error}'.format(
+                          i=i, j=j, error=self.space[i][j]['error']))
         return result
 
     def overall(self):
@@ -286,10 +292,10 @@ def default_cluster(word):
 
 def usage():
     print(
-        "compute-wer.py : compute word error rate (WER) and align recognition results and references."
+        "compute-wer.py : compute word error rate (WER) and align recognition results and references."  # noqa
     )
     print(
-        "         usage : python compute-wer.py [--cs={0,1}] [--cluster=foo] [--ig=ignore_file] [--char={0,1}] [--v={0,1}] [--padding-symbol={space,underline}] test.ref test.hyp > test.wer"
+        "         usage : python compute-wer.py [--cs={0,1}] [--cluster=foo] [--ig=ignore_file] [--char={0,1}] [--v={0,1}] [--padding-symbol={space,underline}] test.ref test.hyp > test.wer"  # noqa
     )
 
 
@@ -364,7 +370,7 @@ if __name__ == '__main__':
             verbose = 0
             try:
                 verbose = int(b)
-            except:
+            except Exception:
                 if b == 'true' or b != '0':
                     verbose = 1
             continue
@@ -378,7 +384,7 @@ if __name__ == '__main__':
                 padding_symbol = '_'
             continue
         if True or sys.argv[1].startswith('-'):
-            #ignore invalid switch
+            # ignore invalid switch
             del sys.argv[1]
             continue
 
@@ -391,7 +397,7 @@ if __name__ == '__main__':
 
     ref_file = sys.argv[1]
     hyp_file = sys.argv[2]
-    rec_set = {}
+    rec_list = []
     if split and not case_sensitive:
         newsplit = dict()
         for w in split:
@@ -401,29 +407,30 @@ if __name__ == '__main__':
             newsplit[w.upper()] = words
         split = newsplit
 
-    with codecs.open(hyp_file, 'r', 'utf-8') as fh:
+    with open(hyp_file) as fh:
         for line in fh:
+            item = json.loads(line)
+            assert 'txt' in item
+            line = item['txt']
             if tochar:
                 array = characterize(line)
             else:
                 array = line.strip().split()
-            if len(array) == 0: continue
-            fid = array[0]
-            rec_set[fid] = normalize(array[1:], ignore_words, case_sensitive,
-                                     split)
+            rec_list.append(
+                normalize(array, ignore_words, case_sensitive, split))
 
     # compute error rate on the interaction of reference file and hyp file
-    for line in open(ref_file, 'r', encoding='utf-8'):
+    for i, line in enumerate(open(ref_file, 'r', encoding='utf-8')):
+        item = json.loads(line)
+        assert 'txt' in item
+        line = item['txt']
+        fid = item['wav']
         if tochar:
             array = characterize(line)
         else:
             array = line.rstrip('\n').split()
-        if len(array) == 0: continue
-        fid = array[0]
-        if fid not in rec_set:
-            continue
-        lab = normalize(array[1:], ignore_words, case_sensitive, split)
-        rec = rec_set[fid]
+        lab = normalize(line, ignore_words, case_sensitive, split)
+        rec = rec_list[i]
         if verbose:
             print('\nutt: %s' % fid)
 
@@ -489,8 +496,7 @@ if __name__ == '__main__':
 
     if verbose:
         print(
-            '==========================================================================='
-        )
+            '================================================================')
         print()
 
     result = calculator.overall()
@@ -525,8 +531,8 @@ if __name__ == '__main__':
             for line in open(cluster_file, 'r', encoding='utf-8'):
                 for token in line.decode('utf-8').rstrip('\n').split():
                     # end of cluster reached, like </Keyword>
-                    if token[0:2] == '</' and token[len(token)-1] == '>' and \
-                       token.lstrip('</').rstrip('>') == cluster_id :
+                    if (token[0:2] == '</' and token[len(token) - 1] == '>'
+                            and token.lstrip('</').rstrip('>') == cluster_id):
                         result = calculator.cluster(cluster)
                         if result['all'] != 0:
                             wer = float(result['ins'] + result['sub'] +
@@ -540,8 +546,8 @@ if __name__ == '__main__':
                         cluster_id = ''
                         cluster = []
                     # begin of cluster reached, like <Keyword>
-                    elif token[0] == '<' and token[len(token)-1] == '>' and \
-                         cluster_id == '' :
+                    elif (token[0] == '<' and token[len(token) - 1] == '>'
+                          and cluster_id == ''):
                         cluster_id = token.lstrip('<').rstrip('>')
                         cluster = []
                     # general terms, like WEATHER / CAR / ...
@@ -549,5 +555,4 @@ if __name__ == '__main__':
                         cluster.append(token)
         print()
         print(
-            '==========================================================================='
-        )
+            '================================================================')

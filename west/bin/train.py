@@ -111,6 +111,7 @@ def main():
         model = AutoModel.from_config(config)
     else:  # load from pretrained
         model = AutoModel.from_pretrained(training_args.model_config_or_dir)
+        config = model.config
     tokenizer = model.init_tokenizer()
     extractor = Extractor.get_class(model.model_type)(tokenizer, config)
 

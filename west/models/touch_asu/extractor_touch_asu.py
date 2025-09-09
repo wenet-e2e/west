@@ -1,5 +1,7 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 
+import math
+
 import torch
 import wenet
 from transformers.trainer_pt_utils import LabelSmoother
@@ -87,7 +89,7 @@ class ExtractorTouchASU(Extractor):
                     t0 += '<|audio_bos|>'
                     t1 = '<|audio_eos|>' + t1
                     mel = self.compute_feature(audio)
-                    ids_audio = [0] * (mel.size(0) // self.ds_rate)
+                    ids_audio = [0] * math.ceil(mel.size(0) / self.ds_rate)
                     tgt_audio = [IGNORE_TOKEN_ID] * len(ids_audio)
                 else:
                     # fake 1s mel feature
@@ -98,6 +100,11 @@ class ExtractorTouchASU(Extractor):
 
             elif msg['role'] == 'assistant':
                 t2 = msg['content'] + '<|im_end|>\n'
+        # Filter some data
+        if not self.inference:
+            if mel.size(0) > self.model_config.max_speech_frames or mel.size(
+                    0) < self.model_config.min_speech_frames:
+                return None
         # TODO(Binbin Zhang): Mutil-turn support
         ids0 = self.tokenizer.encode(t0)
         ids1 = self.tokenizer.encode(t1)

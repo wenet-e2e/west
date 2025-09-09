@@ -17,6 +17,8 @@ class TouchASUConfig(PretrainedConfig):
         projector_hidden_size: int = 2048,
         hidden_size: int = 0,  # Will override in TouchASU Model
         lora_config: Optional[Dict[str, Any]] = None,
+        max_speech_frames: int = 2000,  # 20s
+        min_speech_frames: int = 20,  # 0.2s
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -27,6 +29,8 @@ class TouchASUConfig(PretrainedConfig):
         self.projector_hidden_size = projector_hidden_size
         self.lora_config = lora_config
         self.hidden_size = hidden_size
+        self.max_speech_frames = max_speech_frames
+        self.min_speech_frames = min_speech_frames
 
 
 __all__ = ["TouchASUConfig"]

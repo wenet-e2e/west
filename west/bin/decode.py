@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
+import json
 import sys
 from dataclasses import dataclass, field
 
@@ -42,7 +43,8 @@ def main():
             print(text)
             for t in text:
                 t = t.replace('\n', ' ')
-                fid.write(t + '\n')
+                item = {'txt': t}
+                fid.write(json.dumps(item, ensure_ascii=False) + '\n')
             sys.stdout.flush()
     fid.close()
 

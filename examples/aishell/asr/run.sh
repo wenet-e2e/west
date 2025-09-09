@@ -57,9 +57,8 @@ if [ $stage == "decode" ] || [ $stage == "all" ]; then
     cp conf/generation_config.json $mdir
     python west/bin/decode.py \
         --data_path $data/test.jsonl \
-        --model_dir $PWD/$mdir \
-        --result_path $mdir/result.txt
-    paste <(awk '{print $1}' $data/test.text) $mdir/result.txt > $mdir/result.hyp
-    python tools/compute-wer.py --char=1 --v=1 \
-        $data/test.text $mdir/result.hyp > $mdir/result.wer
+        --model_dir $mdir \
+        --result_path $mdir/result.jsonl
+    python tools/compute_wer.py --char=1 --v=1 \
+        $data/test.jsonl $mdir/result.jsonl > $mdir/result.wer
 fi
