@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import re, sys, unicodedata
+import json
 import codecs
 
 remove_tag = True
@@ -391,7 +392,7 @@ if __name__ == '__main__':
 
     ref_file = sys.argv[1]
     hyp_file = sys.argv[2]
-    rec_set = {}
+    rec_list = []
     if split and not case_sensitive:
         newsplit = dict()
         for w in split:
@@ -401,29 +402,30 @@ if __name__ == '__main__':
             newsplit[w.upper()] = words
         split = newsplit
 
-    with codecs.open(hyp_file, 'r', 'utf-8') as fh:
+    with open(hyp_file) as fh:
         for line in fh:
+            item = json.loads(line)
+            assert 'txt' in item
+            line = item['txt']
             if tochar:
                 array = characterize(line)
             else:
                 array = line.strip().split()
-            if len(array) == 0: continue
-            fid = array[0]
-            rec_set[fid] = normalize(array[1:], ignore_words, case_sensitive,
-                                     split)
+            rec_list.append(normalize(array, ignore_words, case_sensitive,
+                                     split))
 
     # compute error rate on the interaction of reference file and hyp file
-    for line in open(ref_file, 'r', encoding='utf-8'):
+    for i, line in enumerate(open(ref_file, 'r', encoding='utf-8')):
+        item = json.loads(line)
+        assert 'txt' in item
+        line = item['txt']
+        fid = item['wav']
         if tochar:
             array = characterize(line)
         else:
             array = line.rstrip('\n').split()
-        if len(array) == 0: continue
-        fid = array[0]
-        if fid not in rec_set:
-            continue
-        lab = normalize(array[1:], ignore_words, case_sensitive, split)
-        rec = rec_set[fid]
+        lab = normalize(line, ignore_words, case_sensitive, split)
+        rec = rec_list[i]
         if verbose:
             print('\nutt: %s' % fid)
 

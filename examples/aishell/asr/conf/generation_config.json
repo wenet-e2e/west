@@ -1,7 +1,5 @@
 {
-  "bos_token_id": 151643,
-  "do_sample": true,
-  "eos_token_id": 151643,
+  "do_sample": false,
   "max_new_tokens": 50,
   "transformers_version": "4.37.0"
 }
