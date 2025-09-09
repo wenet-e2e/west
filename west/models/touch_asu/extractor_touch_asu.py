@@ -1,7 +1,7 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 
 import torch
-import torchaudio
+import wenet
 from transformers.trainer_pt_utils import LabelSmoother
 
 from west.dataset.extractor import Extractor
@@ -9,9 +9,16 @@ from west.dataset.extractor import Extractor
 
 class ExtractorTouchASU(Extractor):
     model_type = 'touch_asu'
-    fields_batch_static = {'audio_offsets'}
+    fields_batch_static = {'audio_offsets', 'has_audio'}
     fields_batch_dynamic = {'audio_features', 'input_ids', 'labels'}
     fields_pack_offset = {'audio_offsets'}
+
+    def __init__(self, tokenizer, model_config, inference=False):
+        super().__init__(tokenizer, model_config, inference)
+        self.compute_feature, self.feature_dim = wenet.load_feature(
+            self.model_config.wenet_model_name_or_path)
+        self.ds_rate = (self.model_config.encoder_ds_rate *
+                        self.model_config.encoder_projector_ds_rate)
 
     def extract(self, item):
         """
@@ -53,55 +60,49 @@ class ExtractorTouchASU(Extractor):
                 },
             ]
 
-        t0 = ''
-        t1 = '<|audio_eos|><|im_end|>\n' + '<|im_start|>assistant\n'
+        t0 = '<|im_start|>user\n'
+        t1 = '<|im_end|>\n' + '<|im_start|>assistant\n'
         t2 = ''
-        # multi-turn
-        for msg in messages[:-2]:
-            t0 += '<|im_start|>' + msg['role'] + '\n' + \
-                  msg['content'] + '<|im_end|>\n'
-        for msg in messages[-2:]:
-            if msg['role'] == 'user':
-                t0 += '<|im_start|>user\n'
+        has_audio = True
+        for msg in messages:
+            if msg['role'] == 'system':
+                t0 += msg['content']
+            elif msg['role'] == 'user':
                 if isinstance(msg['content'], dict):
                     assert msg['content']['type'] == 'audio'
-                    t0 += '<|audio_bos|>'
                     audio = msg['content']['audio']
                 elif isinstance(msg['content'], list):
                     # Here we assume the 1st is text, 2nd is audio
                     assert len(msg['content']) == 2
                     t0 += msg['content'][0]['text']
-                    t0 += '<|audio_bos|>'
                     audio = msg['content'][1]['audio']
-                # Feature extraction
-                if isinstance(audio, str):  # path
-                    wav, sample_rate = torchaudio.load(audio)
+                elif isinstance(msg['content'], str):  # No audio
+                    t0 += msg['content']
+                    has_audio = False
+                if has_audio:
+                    t0 += '<|audio_bos|>'
+                    t1 = '<|audio_eos|>' + t1
+                    mel = self.compute_feature(audio)
+                    ids_audio = [0] * (mel.size(0) // self.ds_rate)
+                    tgt_audio = [IGNORE_TOKEN_ID] * len(ids_audio)
                 else:
-                    wav, sample_rate = item['wav'], item['sample_rate']
-                wav = torchaudio.transforms.Resample(sample_rate, 16000)(wav)
-                wav = wav * (1 << 15)
-                mel = torchaudio.compliance.kaldi.fbank(wav,
-                                                        num_mel_bins=80,
-                                                        frame_length=25,
-                                                        frame_shift=10,
-                                                        dither=0.0,
-                                                        energy_floor=0.0,
-                                                        sample_frequency=16000)
-                # Here 8 is the final subsampling rate
-                ids_audio = [0] * (mel.size(0) // 8)
-                tgt_audio = [IGNORE_TOKEN_ID] * len(ids_audio)
+                    # fake 1s mel feature
+                    mel = torch.zeros((100, self.feature_dim),
+                                      dtype=torch.float)
+                    ids_audio = []
+                    tgt_audio = []
 
             elif msg['role'] == 'assistant':
                 t2 = msg['content'] + '<|im_end|>\n'
         # TODO(Binbin Zhang): Mutil-turn support
         ids0 = self.tokenizer.encode(t0)
         ids1 = self.tokenizer.encode(t1)
-        ids = [self.tokenizer.bos_token_id] + ids0 + ids_audio + ids1
-        tgt = [self.tokenizer.bos_token_id] + ids0 + tgt_audio + ids1
+        ids = ids0 + ids_audio + ids1
+        tgt = ids0 + tgt_audio + ids1
         if not self.inference:
             ids2 = self.tokenizer.encode(t2)
-            ids = ids + ids2 + [self.tokenizer.eos_token_id]
-            tgt = tgt + ids2 + [self.tokenizer.eos_token_id]
+            ids = ids + ids2
+            tgt = tgt + ids2
         input_ids = torch.tensor(ids, dtype=torch.int)
         tgt_ids = torch.tensor(tgt, dtype=torch.long)
         return {
@@ -109,4 +110,5 @@ class ExtractorTouchASU(Extractor):
             'labels': tgt_ids,
             'audio_features': mel,
             'audio_offsets': len(ids0) + 1,
+            'has_audio': has_audio,
         }

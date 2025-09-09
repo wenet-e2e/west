@@ -7,15 +7,13 @@ export PYTHONPATH=$PYTHONPATH:$PWD
 export CUDA_VISIBLE_DEVICES="0"  # Change this to all your available gpus, such as "0,1,2,3"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F ',' '{print NF}')
 
-llm=/bucket/output/jfs-hdfs/user/binbin.zhang/huggingface/hub/Qwen2-1.5B-Instruct
-speech_encoder=/jfs-hdfs/user/binbin.zhang/models/wenet/wenetspeech/u2pp_conformer/
-
 stage=train # data/train/decode
 data=data
 dir=exp/Qwen-1.5B-Instruct-wenetspeech-encoder_pack8192
 steps=2000  # training steps
 
 # Note: Change your model settings in `conf/touch_asu_config.json`
+#       Change your decode settings in `conf/generation_config.json`
 
 
 if [ $stage == "data" ] || [ $stage == "all" ]; then
@@ -56,6 +54,7 @@ fi
 
 if [ $stage == "decode" ] || [ $stage == "all" ]; then
     mdir=$dir/checkpoint-${steps}
+    cp conf/generation_config.json $mdir
     python west/bin/decode.py \
         --data_path $data/test.jsonl \
         --model_dir $PWD/$mdir \

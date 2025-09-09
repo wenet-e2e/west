@@ -2,13 +2,14 @@
 
 from typing import Optional
 
-import safetensors
 import torch
 import wenet
 from peft import LoraConfig, get_peft_model
 from torch import nn
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                          PreTrainedModel)
+                          GenerationMixin, PreTrainedModel)
+
+from west.utils.utils import freeze_module
 
 from .configuration_touch_asu import TouchASUConfig
 
@@ -39,12 +40,7 @@ class ProjectorCov1d(nn.Module):
         return x
 
 
-def freeze_model(model):
-    for _, param in model.named_parameters():
-        param.requires_grad = False
-
-
-class TouchASU(PreTrainedModel):
+class TouchASU(PreTrainedModel, GenerationMixin):
     """ LLM based Automatic Speech Understanding
     """
     model_type = 'touch_asu'
@@ -60,7 +56,7 @@ class TouchASU(PreTrainedModel):
             torch_dtype='auto',
             attn_implementation="flash_attention_2",  # or "flex_attention"
         )
-        self.encoder = wenet.load_model_pt(config.wenet_model_name_or_path)
+        self.encoder = wenet.load_model(config.wenet_model_name_or_path)
         encoder_dim = self.encoder.encoder.output_size()
         config.hidden_size = llm_config.hidden_size  # for deepseed training
         self.projector = ProjectorCov1d(config, encoder_dim,
@@ -74,34 +70,11 @@ class TouchASU(PreTrainedModel):
             self.llm.print_trainable_parameters()
 
         self.freeze_encoder()
-        self._keys_to_ignore_on_save = set()
-        # Do not save the parameter of llm and speech encoder
-        if config.lora_config is not None:
-            for k in self.llm.state_dict().keys():
-                if list(self.llm.peft_config.keys())[0] not in k:
-                    self._keys_to_ignore_on_save.add('llm.' + k)
-        else:
-            for k in self.llm.state_dict().keys():
-                self._keys_to_ignore_on_save.add('llm.' + k)
+        if config.lora_config is None:
             self.freeze_llm()
-        for k in self.encoder.state_dict().keys():
-            self._keys_to_ignore_on_save.add('encoder.' + k)
 
     def tie_weights(self):
         return self.llm.tie_weights()
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
-                        **kwargs):
-        """ The default `from_pretrained` does not init the parameters
-            of `self.llm` and `self.encoder`, so we custom it.
-        """
-        config = TouchASUConfig.from_pretrained(pretrained_model_name_or_path)
-        model = cls(config)
-        weights_path = f"{pretrained_model_name_or_path}/model.safetensors"
-        state_dict = safetensors.torch.load_file(weights_path)
-        model.load_state_dict(state_dict, strict=False)
-        return model
 
     def get_speech_embeddings(self, audio_features, audio_features_lengths):
         speech_emb, mask = self.encoder._forward_encoder(
@@ -118,12 +91,15 @@ class TouchASU(PreTrainedModel):
         audio_features: Optional[torch.FloatTensor] = None,
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
+        has_audio: Optional[torch.BoolTensor] = None,
     ):
         text_emb = self.llm.get_input_embeddings()(input_ids)
         speech_emb, speech_emb_lens = self.get_speech_embeddings(
             audio_features, audio_features_lengths)
         inputs_embeds = text_emb
         for i in range(audio_features.size(0)):
+            if not has_audio[i]:
+                continue
             b = batch_idx[i]
             s, e = audio_offsets[i], audio_offsets[i] + speech_emb_lens[i]
             inputs_embeds[b, s:e, :] = speech_emb[i, :speech_emb_lens[i], :]
@@ -140,6 +116,7 @@ class TouchASU(PreTrainedModel):
         audio_features: Optional[torch.FloatTensor] = None,
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
+        has_audio: Optional[torch.BoolTensor] = None,
         **kwargs,
     ):
         inputs_embeds = self.compute_mix_embedding(
@@ -148,6 +125,7 @@ class TouchASU(PreTrainedModel):
             audio_features,
             audio_features_lengths,
             batch_idx,
+            has_audio,
         )
         out = self.llm(inputs_embeds=inputs_embeds,
                        attention_mask=attention_mask,
@@ -166,8 +144,8 @@ class TouchASU(PreTrainedModel):
         audio_features: Optional[torch.FloatTensor] = None,
         audio_features_lengths: Optional[torch.LongTensor] = None,
         batch_idx: Optional[torch.LongTensor] = None,
-        eos_token_id=None,
-        decode_config=None,
+        has_audio: Optional[torch.BoolTensor] = None,
+        **kwargs,
     ):
         inputs_embeds = self.compute_mix_embedding(
             input_ids,
@@ -175,15 +153,12 @@ class TouchASU(PreTrainedModel):
             audio_features,
             audio_features_lengths,
             batch_idx,
+            has_audio,
         )
         model_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            do_sample=False,
-            top_p=1.0,
-            num_beams=decode_config.num_beams,
-            max_new_tokens=decode_config.max_new_tokens,
-            eos_token_id=eos_token_id,
+            generation_config=self.generation_config,
+            **kwargs,
         )
         return model_outputs
 
@@ -191,19 +166,17 @@ class TouchASU(PreTrainedModel):
         self.llm.enable_input_require_grads()
 
     def freeze_encoder(self):
-        freeze_model(self.encoder)
+        freeze_module(self.encoder)
         self.encoder.eval()
 
     def freeze_llm(self):
-        freeze_model(self.llm)
+        freeze_module(self.llm)
 
     def init_tokenizer(self):
         tokenizer = AutoTokenizer.from_pretrained(
             self.config.llm_model_name_or_path,
             padding_side="right",
         )
-        if 'Qwen' in self.config.llm_model_name_or_path:
-            tokenizer.bos_token = tokenizer.eos_token
-        elif 'llama' in self.config.llm_model_name_or_path:
-            tokenizer.pad_token = '<|finetune_right_pad_id|>'
+        # We only support QWen now
+        tokenizer.bos_token = tokenizer.eos_token
         return tokenizer

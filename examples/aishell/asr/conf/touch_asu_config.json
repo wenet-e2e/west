@@ -6,5 +6,5 @@
   "model_type": "touch_asu",
   "projector_hidden_size": 2048,
   "transformers_version": "4.52.3",
-  "wenet_model_name_or_path": "/bucket/output/jfs-hdfs/user/binbin.zhang/models/wenet/wenetspeech/u2pp_conformer/"
+  "wenet_model_name_or_path": "wenetspeech"
 }

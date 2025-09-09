@@ -6,7 +6,6 @@ import random
 from typing import Optional
 
 import s3tokenizer
-import safetensors
 import torch
 import torch.nn.functional as F
 import wespeaker
@@ -14,6 +13,7 @@ from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
 
 from west.utils.mask import make_pad_mask, non_causal_mask
+from west.utils.utils import freeze_module
 
 from .configuration_touch_flow import TouchFlowConfig
 
@@ -38,11 +38,6 @@ class SinusoidalPosEmb(torch.nn.Module):
         return emb
 
 
-def freeze_model(model):
-    for _, param in model.named_parameters():
-        param.requires_grad = False
-
-
 class TouchFlow(PreTrainedModel):
     """flow model based on huggingface transformers"""
     model_type = 'touch_flow'
@@ -61,13 +56,8 @@ class TouchFlow(PreTrainedModel):
         self.speaker_model = speaker_model.to(device)
         # Load llm model and tokenizer
         self.llm = AutoModelForCausalLM.from_config(config=llm_config)
-        self._keys_to_ignore_on_save = set()
-        for k in self.speech_tokenizer.state_dict().keys():
-            self._keys_to_ignore_on_save.add('speech_tokenizer.' + k)
-        for k in self.speaker_model.state_dict().keys():
-            self._keys_to_ignore_on_save.add('speaker_model.' + k)
-        freeze_model(self.speech_tokenizer)
-        freeze_model(self.speaker_model)
+        freeze_module(self.speech_tokenizer)
+        freeze_module(self.speaker_model)
         self.vocab_size = self.llm.vocab_size
         mel_dim = 80
         hidden_size = config.hidden_size
@@ -85,19 +75,6 @@ class TouchFlow(PreTrainedModel):
         )
         self.input_projector = torch.nn.Linear(mel_dim * 5, hidden_size)
         self.mel_projector = torch.nn.Linear(hidden_size, mel_dim)
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str, *args,
-                        **kwargs):
-        """ The default `from_pretrained` does not init the parameters of
-            `self.speech_tokenizer` and `self.speaker_model`, so we custom it.
-        """
-        config = TouchFlowConfig.from_pretrained(pretrained_model_name_or_path)
-        model = cls(config)
-        weights_path = f"{pretrained_model_name_or_path}/model.safetensors"
-        state_dict = safetensors.torch.load_file(weights_path)
-        model.load_state_dict(state_dict, strict=False)
-        return model
 
     def interpolate(self, x, ylens=None):
         # x in (B, T, D)

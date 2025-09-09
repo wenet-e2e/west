@@ -13,8 +13,9 @@ class Extractor(ABC):
     fields_batch_dynamic = {}
     fields_pack_offset = {}
 
-    def __init__(self, tokenizer, inference=False):
+    def __init__(self, tokenizer, model_config, inference=False):
         self.tokenizer = tokenizer
+        self.model_config = model_config
         self.inference = inference
 
     def __init_subclass__(cls, **kwargs):
