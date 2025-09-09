@@ -1,0 +1,10 @@
+{
+  "bos_token_id": 151643,
+  "do_sample": false,
+  "eos_token_id": [151643, 151645],
+  "max_new_tokens": 200,
+  "temperature": 1.0,
+  "num_beams": 3,
+  "repetition_penalty": 3.0,
+  "transformers_version": "4.37.0"
+}

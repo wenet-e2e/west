@@ -33,7 +33,9 @@ class ExtractorTouchASU(Extractor):
             {'role': 'system', 'content': 'You are a helpful assistant.'},  # optional # noqa
             {'role': 'user', 'content': 'What is the capital of China?'},   # optional # noqa
             {'role': 'assistant', 'content': 'The capital of China is Beijing.'},   # optional # noqa
-            {'role': 'user', 'content': {'type': 'audio', 'audio': item['wav']}},  # last turn # noqa
+            {'role': 'user', 'content': {'type': 'audio', 'audio': item['wav']}},  # last turn (for audio qa) # noqa
+            or
+            {'role': 'user', 'content': 'question text'},  # last turn (for text qa) # noqa
             {'role': 'assistant', 'content': item['txt']},
         ]
         """
@@ -60,14 +62,16 @@ class ExtractorTouchASU(Extractor):
                 },
             ]
 
-        t0 = '<|im_start|>user\n'
+        t0 = ''
         t1 = '<|im_end|>\n' + '<|im_start|>assistant\n'
         t2 = ''
         has_audio = True
-        for msg in messages:
-            if msg['role'] == 'system':
-                t0 += msg['content']
-            elif msg['role'] == 'user':
+        for msg in messages[:-2]:
+            t0 += '<|im_start|>' + msg['role'] + '\n' \
+                  + msg['content'] + '<|im_end|>\n'
+        for msg in messages[-2:]:
+            if msg['role'] == 'user':
+                t0 += '<|im_start|>user\n'
                 if isinstance(msg['content'], dict):
                     assert msg['content']['type'] == 'audio'
                     audio = msg['content']['audio']
@@ -109,6 +113,6 @@ class ExtractorTouchASU(Extractor):
             'input_ids': input_ids,
             'labels': tgt_ids,
             'audio_features': mel,
-            'audio_offsets': len(ids0) + 1,
+            'audio_offsets': len(ids0),
             'has_audio': has_audio,
         }

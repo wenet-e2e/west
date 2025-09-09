@@ -225,16 +225,19 @@ class SpeechDataset(IterableDataset):
 
 
 if __name__ == '__main__':
-    from transformers import AutoTokenizer
+    from transformers import AutoConfig, AutoTokenizer
+    config = AutoConfig.from_pretrained("conf/touch_asu_config.json")
     tokenizer = AutoTokenizer.from_pretrained(
         '/jfs-hdfs/user/binbin.zhang/huggingface/hub/Qwen2-1.5B-Instruct')
     tokenizer.bos_token = tokenizer.eos_token
     print(tokenizer.bos_token_id)
     data_args = DataArguments
-    data_args.data_path = 'data/train.jsonl'
+    data_args.data_path = 'data/chinese_qa.jsonl'
     data_args.extractor_type = 'touch_asu'
-    extractor = Extractor.get_class(data_args.extractor_type)(tokenizer)
+    extractor = Extractor.get_class(data_args.extractor_type)(tokenizer, config)
     dataset = SpeechDataset(extractor, data_args)
     for i, x in enumerate(dataset):
+        print(x)
+        print(tokenizer.decode(x['input_ids'][0]))
         if i > 0:
             break
