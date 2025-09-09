@@ -29,8 +29,6 @@ class DataArguments:
             "size for sequence pack, it will override any value"
             "given in batch_size"
         })
-    max_speech_seconds: float = 10
-    min_speech_seconds: int = 0.2
     num_data_cycles: int = field(
         default=1,
         metadata={
