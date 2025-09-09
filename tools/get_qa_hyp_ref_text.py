@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# Copyright 2025 Chengdong Liang(liangchengdongd@qq.com)
 
 import json
 import sys

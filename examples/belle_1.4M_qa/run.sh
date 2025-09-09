@@ -1,4 +1,4 @@
-# Copyright 2025 Chengdong Liang(binbzha@qq.com)
+# Copyright 2025 Chengdong Liang(liangchengdongd@qq.com)
 
 [ ! -s west ] && ln -s ../../west
 [ ! -s tools ] && ln -s ../../tools
