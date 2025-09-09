@@ -1,6 +1,6 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
-import sys
 import json
+import sys
 from dataclasses import dataclass, field
 
 import torch
