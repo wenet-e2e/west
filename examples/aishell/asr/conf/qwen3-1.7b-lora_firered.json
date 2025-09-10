@@ -1,0 +1,32 @@
+{
+  "architectures": [
+    "TouchASU"
+  ],
+  "encoder_ds_rate": 4,
+  "encoder_projector_ds_rate": 2,
+  "hidden_size": 2048,
+  "llm_model_name_or_path": "Qwen/Qwen3-1.7B",
+  "lora_config": {
+    "inference_mode": false,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "r": 64,
+    "target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj",
+      "up_proj",
+      "gate_proj",
+      "down_proj"
+    ],
+    "task_type": "CAUSAL_LM"
+  },
+  "max_speech_frames": 2000,
+  "min_speech_frames": 20,
+  "model_type": "touch_asu",
+  "projector_hidden_size": 2048,
+  "torch_dtype": "bfloat16",
+  "transformers_version": "4.52.3",
+  "wenet_model_name_or_path": "firered"
+}
