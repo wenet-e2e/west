@@ -1,10 +1,10 @@
 {
   "encoder_ds_rate": 4,
   "encoder_projector_ds_rate": 2,
-  "llm_model_name_or_path": "/bucket/output/jfs-hdfs/user/binbin.zhang/huggingface/hub/Qwen2-1.5B-Instruct",
+  "llm_model_name_or_path": "Qwen/Qwen2-7B-Instruct",
   "lora_config": null,
   "model_type": "touch_asu",
   "projector_hidden_size": 2048,
   "transformers_version": "4.52.3",
-  "wenet_model_name_or_path": "wenetspeech"
+  "wenet_model_name_or_path": "firered"
 }
