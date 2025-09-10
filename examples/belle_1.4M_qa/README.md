@@ -19,7 +19,7 @@ First, prepare the train data `data/train.jsonl`, the data is like:
 
 We train the QA model in two stages. In the first stage, we train the ASR model using AIShell2 dataset. In the second stage, we train the QA model using AIShell2 dataset and Belle_1.4M-SLAM-Omni dataset.
 
-To train the ASR model, please refer to the [ASR tutorial](https://github.com/west_main/tree/main/examples/aishell2/asr).
+To train the ASR model, please refer to the [ASR tutorial](../aishell2/asr).
 
 To train the QA model, just run
 > NOTE: The train data is the combination of ASR data and QA data.
