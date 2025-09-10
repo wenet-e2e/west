@@ -17,8 +17,12 @@ First, prepare the train data `data/train.jsonl`, the data is like:
 {"key": "train-00000-of-01601-idx-2-train_3_5M_CN_ready4cosy_wo_code_switching-28189110-1", "wav": "train-00000-of-01601/train-00000-of-01601-idx-2-train_3.5M_CN_ready4cosy_wo_code_switching-28189110-1.wav", "messages": [{"role": "user", "content": {"type": "audio", "audio": "train-00000-of-01601/train-00000-of-01601-idx-2-train_3.5M_CN_ready4cosy_wo_code_switching-28189110-1.wav"}}, {"role": "assistant", "content": "在绿野上，羚羊奔跑\n鸟语花香在心头荡漾\n涓涓小溪，蜿蜒、潺潺\n绿树成荫，凉雨淅淅沥沥\n自然的美景，如此神奇\n让我们沉迷，无法自拔\n在这美景之中，心灵得以宁静\n如此小小的悦动，细腻而清新"}]}
 ```
 
-To train the model, just run
+We train the QA model in two stages. In the first stage, we train the ASR model using AIShell2 dataset. In the second stage, we train the QA model using AIShell2 dataset and Belle_1.4M-SLAM-Omni dataset.
 
+To train the ASR model, please refer to the [ASR tutorial](https://github.com/west_main/tree/main/examples/aishell2/asr).
+
+To train the QA model, just run
+> NOTE: The train data is the combination of ASR data and QA data.
 ```shell
 bash run.sh --stage train
 ```

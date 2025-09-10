@@ -69,5 +69,5 @@ if [ $stage == "decode" ] || [ $stage == "all" ]; then
         --result_path $mdir/result.jsonl
     python tools/get_qa_hyp_ref_text.py $data/chinese_qa.jsonl \
         $mdir/result.jsonl $mdir/result_hyp_ref.json
-    python tools/compute_acc_of_contain.py $mdir/result.json
+    python tools/compute_acc_of_contain.py $mdir/result_hyp_ref.json
 fi

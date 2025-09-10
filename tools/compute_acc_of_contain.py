@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # Copyright 2025 Chengdong Liang(liangchengdongd@qq.com)
 
+# copy from: https://github.com/VITA-MLLM/VITA-Audio/blob/main/evaluation/compute-acc-of-contain.py. # noqa
+
 import json
 import re
 import string
@@ -65,7 +67,6 @@ if __name__ == "__main__":
                 acc += 1
             else:
                 print("======================================================")
-                print("question: ", pred_gt["question"])
                 print("ref=", pred_gt["ref"])
                 print("hyp=", pred_gt["hyp"])
             num += 1
