@@ -157,6 +157,7 @@ class TouchASU(PreTrainedModel, GenerationMixin):
         )
         model_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
             generation_config=self.generation_config,
             **kwargs,
         )

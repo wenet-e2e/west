@@ -116,6 +116,7 @@ class TouchTTS(PreTrainedModel, GenerationMixin):
                                                    batch_idx)
         model_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
             generation_config=self.generation_config,
             min_new_tokens=min_length,
             max_new_tokens=max_length,
