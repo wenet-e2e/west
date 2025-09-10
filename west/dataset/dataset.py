@@ -110,9 +110,6 @@ class SpeechDataset(IterableDataset):
                             try:
                                 x['txt'] = x['txt'].decode('utf8')
                                 x['wav'] = io.BytesIO(x['wav'])
-                                if "messages" in x.keys():
-                                    x['messages'] = json.loads(
-                                        x['messages'].decode('utf8'))
                                 yield x
                             except Exception:
                                 logging.info(f'Dataset decode error, {line}')

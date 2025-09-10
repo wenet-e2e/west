@@ -44,7 +44,12 @@ class ExtractorTouchASU(Extractor):
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
         # OpenAI role-content based SFT data
         # At least one pair of "user" and "assistant"
-        if 'messages' in item and len(item["messages"]) >= 2:
+        if 'messages' in item:
+            if not isinstance(item['messages'], list) \
+               or len(item['messages']) < 2 \
+               or item['messages'][-2]['role'] != 'user' \
+               or item['messages'][-1]['role'] != 'assistant':
+                return None
             messages = item['messages']
         else:  # Speech pretraining data
             messages = [
