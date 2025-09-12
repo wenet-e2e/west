@@ -21,10 +21,8 @@ class TouchTTS(PreTrainedModel, GenerationMixin):
         super().__init__(config)
         llm_config = AutoConfig.from_pretrained(config.llm_model_name_or_path)
         config.hidden_size = llm_config.hidden_size  # for deepseed training
-        speech_tokenizer = s3tokenizer.load_model(
+        self.speech_tokenizer = s3tokenizer.load_model(
             'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.speech_tokenizer = speech_tokenizer.to(device)
         self.llm = AutoModelForCausalLM.from_pretrained(
             config.llm_model_name_or_path,
             config=llm_config,
@@ -34,6 +32,9 @@ class TouchTTS(PreTrainedModel, GenerationMixin):
         self.speech_tokenizer.freeze()
         # We assume the last 4096 units are speech tokens
         self.speech_code_start_idx = llm_config.vocab_size - 4096
+
+    def tie_weights(self):
+        return self.llm.tie_weights()
 
     def reorg_ids(
         self,
