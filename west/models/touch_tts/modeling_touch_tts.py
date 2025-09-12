@@ -20,15 +20,15 @@ class TouchTTS(PreTrainedModel, GenerationMixin):
     def __init__(self, config: TouchTTSConfig):
         super().__init__(config)
         llm_config = AutoConfig.from_pretrained(config.llm_model_name_or_path)
-        config.hidden_size = llm_config.hidden_size  # for deepseed training
-        self.speech_tokenizer = s3tokenizer.load_model(
-            'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
         self.llm = AutoModelForCausalLM.from_pretrained(
             config.llm_model_name_or_path,
             config=llm_config,
             torch_dtype='auto',
             attn_implementation="flash_attention_2",  # or "flex_attention"
         )
+        config.hidden_size = llm_config.hidden_size  # for deepseed training
+        self.speech_tokenizer = s3tokenizer.load_model(
+            'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
         self.speech_tokenizer.freeze()
         # We assume the last 4096 units are speech tokens
         self.speech_code_start_idx = llm_config.vocab_size - 4096
