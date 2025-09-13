@@ -46,16 +46,15 @@ class TouchFlow(PreTrainedModel):
 
     def __init__(self, config: TouchFlowConfig):
         super().__init__(config)
-        llm_config = AutoConfig.from_pretrained(config.llm_config_path)
-        config.hidden_size = llm_config.hidden_size
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        speech_tokenizer = s3tokenizer.load_model(
-            'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
-        self.speech_tokenizer = speech_tokenizer.to(device)
-        speaker_model = wespeaker.load_model_pt(config.speaker_model_path)
-        self.speaker_model = speaker_model.to(device)
+        llm_config = AutoConfig.from_pretrained(config.llm_model_name_or_path)
         # Load llm model and tokenizer
         self.llm = AutoModelForCausalLM.from_config(config=llm_config)
+        config.hidden_size = llm_config.hidden_size
+        speech_tokenizer = s3tokenizer.load_model(
+            'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
+        self.speech_tokenizer = speech_tokenizer
+        speaker_model = wespeaker.load_model_pt(config.speaker_model_path)
+        self.speaker_model = speaker_model
         freeze_module(self.speech_tokenizer)
         freeze_module(self.speaker_model)
         self.vocab_size = self.llm.vocab_size
@@ -75,6 +74,9 @@ class TouchFlow(PreTrainedModel):
         )
         self.input_projector = torch.nn.Linear(mel_dim * 5, hidden_size)
         self.mel_projector = torch.nn.Linear(hidden_size, mel_dim)
+
+    def tie_weights(self):
+        return self.llm.tie_weights()
 
     def interpolate(self, x, ylens=None):
         # x in (B, T, D)
@@ -239,7 +241,7 @@ class TouchFlow(PreTrainedModel):
 
     def init_tokenizer(self):
         tokenizer = AutoTokenizer.from_pretrained(
-            self.config.text_tokenizer_path)
-        if 'Qwen' in self.config.text_tokenizer_path:
+            self.config.llm_model_name_or_path)
+        if 'Qwen' in self.config.llm_model_name_or_path:
             tokenizer.bos_token = tokenizer.eos_token
         return tokenizer

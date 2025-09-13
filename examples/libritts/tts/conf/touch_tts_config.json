@@ -1,0 +1,7 @@
+{
+  "llm_model_name_or_path": "/bucket/output/jfs-hdfs/user/binbin.zhang/github/west/examples/aishell/tts/model/Qwen2.5-0.5B-Audio",
+  "model_type": "touch_tts",
+  "transformers_version": "4.52.3",
+  "num_speech_tokens": 4096,
+  "s3tokenizer_model_name_or_path": "/bucket/output/jfs-hdfs/user/hao.yin/share/FunAudioLLM/s3tokenizer"
+}

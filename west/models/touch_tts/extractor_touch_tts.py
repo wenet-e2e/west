@@ -18,17 +18,22 @@ class ExtractorTouchTTS(Extractor):
     def extract(self, item):
         import s3tokenizer
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
+        waveform, sample_rate = torchaudio.load(item['wav'])
+        item['wav'] = waveform
+        item['sample_rate'] = sample_rate
         audio = torchaudio.transforms.Resample(item['sample_rate'],
                                                16000)(item['wav'])
         audio = audio[0]  # get the first channel
         mel = s3tokenizer.log_mel_spectrogram(audio)
         mel = mel.transpose(0, 1)
         # There is 100 frames mel per second, and 25 tokens per second
-        num_audio_token = math.ceil(mel.size(0) / 100.0 * 25)
+        num_audio_token = math.ceil(mel.size(0) * 25 / 100.0 - 1e-9)
         if not self.inference:
             content = item['txt'] + '<|audio_bos|>'
+            token_lengths = 0
         else:
             content = item['txt'] + item['syn_txt'] + '<|audio_bos|>'
+            token_lengths = len(self.tokenizer.encode(item['syn_txt']))
         ids_text = [self.tokenizer.bos_token_id
                     ] + self.tokenizer.encode(content)
         tgt_text = [IGNORE_TOKEN_ID] * len(ids_text)
@@ -46,5 +51,5 @@ class ExtractorTouchTTS(Extractor):
             'labels': tgt_ids,
             'audio_features': mel,
             'audio_offsets': len(ids_text),
-            'text_lengths': len(item.get('syn_txt', ''))
+            'text_lengths': token_lengths
         }

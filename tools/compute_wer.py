@@ -429,7 +429,7 @@ if __name__ == '__main__':
             array = characterize(line)
         else:
             array = line.rstrip('\n').split()
-        lab = normalize(line, ignore_words, case_sensitive, split)
+        lab = normalize(array, ignore_words, case_sensitive, split)
         rec = rec_list[i]
         if verbose:
             print('\nutt: %s' % fid)

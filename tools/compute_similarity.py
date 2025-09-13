@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2025 Hao Yin(1049755192@qq.com)
+
+import json
+import math
+import sys
+import wespeaker
+
+model = wespeaker.load_model(
+    model_dir="/jfs-hdfs/user/binbin.zhang/models/wespeaker/chinese"
+)
+
+prompts = {}
+with open(sys.argv[1]) as f:
+    for line in f:
+        item = json.loads(line)
+        prompts[item["key"]] = item["wav"]
+
+
+total = 0.0
+count = 0
+with open(sys.argv[2]) as f, open(sys.argv[3], "w") as fout:
+    for line in f:
+        key, wav_gen = line.strip().split()
+        if key in prompts:
+            try:
+                wav_prompt = prompts[key]
+                sim = model.compute_similarity(wav_prompt, wav_gen)
+                print(wav_prompt, wav_gen, sim)
+                fout.write(f"{sim} {wav_prompt} {wav_gen}\n")
+                if not math.isnan(sim):
+                    total += sim
+                    count += 1
+            except:
+                continue
+    fout.write("AVG speaker similarity {:.3f}\n".format(total / count))

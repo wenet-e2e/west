@@ -1,0 +1,67 @@
+{
+    "fp16": {
+        "enabled": false
+    },
+    "bf16": {
+        "enabled": true,
+        "loss_scale_window": 1000,
+        "hysteresis": 2,
+        "min_loss_scale": 1
+    },
+    "optimizer": {
+        "type": "AdamW",
+        "params": {
+            "lr": "auto",
+            "betas": "auto",
+            "eps": 1e-8,
+            "weight_decay": "auto"
+        }
+    },
+
+    "scheduler": {
+        "type": "WarmupLR",
+        "params": {
+            "warmup_min_lr": "auto",
+            "warmup_max_lr": "auto",
+            "warmup_num_steps": "auto"
+        }
+    },
+
+    "zero_optimization": {
+        "stage": 1,
+        "offload_optimizer": {
+            "device": "none"
+        },
+        "offload_param": {
+            "device": "none"
+        },
+        "overlap_comm": true,
+        "contiguous_gradients": true,
+        "sub_group_size": 1e9,
+        "reduce_bucket_size": 5e8,
+        "allgather_bucket_size": 5e8,
+        "reduce_scatter": true,
+        "allgather_partitions": true
+    },
+
+    "activation_checkpointing": {
+        "partition_activations": false,
+        "cpu_checkpointing": false,
+        "contiguous_memory_optimization": false,
+        "number_checkpoints": null,
+        "synchronize_checkpoint_boundary": false,
+        "profile": false
+    },
+
+    "gradient_accumulation_steps": "auto",
+    "gradient_clipping": "auto",
+    "steps_per_print": 100,
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": "auto",
+    "wall_clock_breakdown": false,
+    
+    "communication_data_type": "fp32",
+    "prescale_gradients": false,
+    "sparse_gradients": false,
+    "memory_breakdown": false
+}
