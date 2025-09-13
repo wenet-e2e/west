@@ -27,9 +27,8 @@ class TouchTTS(PreTrainedModel, GenerationMixin):
             attn_implementation="flash_attention_2",  # or "flex_attention"
         )
         config.hidden_size = llm_config.hidden_size  # for deepseed training
-        speech_tokenizer = s3tokenizer.load_model(
+        self.speech_tokenizer = s3tokenizer.load_model(
             'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
-        self.speech_tokenizer = speech_tokenizer
         self.speech_tokenizer.freeze()
         # We assume the last 4096 units are speech tokens
         self.speech_code_start_idx = llm_config.vocab_size - 4096
