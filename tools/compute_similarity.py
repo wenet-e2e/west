@@ -5,11 +5,10 @@
 import json
 import math
 import sys
+
 import wespeaker
 
-model = wespeaker.load_model(
-    model_dir="/jfs-hdfs/user/binbin.zhang/models/wespeaker/chinese"
-)
+model = wespeaker.load_model(model_id="chinese")
 
 prompts = {}
 with open(sys.argv[1]) as f:
@@ -32,6 +31,7 @@ with open(sys.argv[2]) as f, open(sys.argv[3], "w") as fout:
                 if not math.isnan(sim):
                     total += sim
                     count += 1
-            except:
+            except Exception as e:
+                print(e)
                 continue
     fout.write("AVG speaker similarity {:.3f}\n".format(total / count))
