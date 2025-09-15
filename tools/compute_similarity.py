@@ -8,8 +8,8 @@ import sys
 
 import wespeaker
 
-# eres2net: https://www.modelscope.cn/models/iic/speech_eres2net_sv_zh-cn_16k-common/summary  # noqa
-model = wespeaker.load_model(model_id="eres2net")
+# campplus: https://www.modelscope.cn/models/iic/speech_campplus_sv_zh-cn_16k-common  # noqa
+model = wespeaker.load_model(model_id="campplus")
 
 prompts = {}
 with open(sys.argv[1]) as f:
