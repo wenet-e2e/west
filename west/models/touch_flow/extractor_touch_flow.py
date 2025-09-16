@@ -21,12 +21,8 @@ class ExtractorTouchFlow(Extractor):
     def extract(self, item):
         import s3tokenizer
         waveform, sample_rate = torchaudio.load(item['wav'])
-        item['wav'] = waveform
-        item['sample_rate'] = sample_rate
-        audio = torchaudio.transforms.Resample(item['sample_rate'],
-                                               16000)(item['wav'])
-        audio_22k = torchaudio.transforms.Resample(item['sample_rate'],
-                                                   22050)(item['wav'])
+        audio = torchaudio.transforms.Resample(sample_rate, 16000)(waveform)
+        audio_22k = torchaudio.transforms.Resample(sample_rate, 22050)(waveform)
         mel_vocoder = mel_spectrogram(audio_22k,
                                       n_fft=1024,
                                       num_mels=80,

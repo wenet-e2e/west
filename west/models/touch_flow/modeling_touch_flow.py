@@ -50,11 +50,9 @@ class TouchFlow(PreTrainedModel):
         # Load llm model and tokenizer
         self.llm = AutoModelForCausalLM.from_config(config=llm_config)
         config.hidden_size = llm_config.hidden_size
-        speech_tokenizer = s3tokenizer.load_model(
+        self.speech_tokenizer = s3tokenizer.load_model(
             'speech_tokenizer_v1_25hz', config.s3tokenizer_model_name_or_path)
-        self.speech_tokenizer = speech_tokenizer
-        speaker_model = wespeaker.load_model_pt(config.speaker_model_path)
-        self.speaker_model = speaker_model
+        self.speaker_model = wespeaker.load_model_pt(config.speaker_model_path)
         freeze_module(self.speech_tokenizer)
         freeze_module(self.speaker_model)
         self.vocab_size = self.llm.vocab_size

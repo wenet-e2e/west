@@ -13,6 +13,7 @@ dir=exp/touch_tts-Qwen2.5-0.5B-Audio-libritts
 
 steps=50000  # training steps
 
+. tools/parse_options.sh
 
 if [ $stage == "data" ] || [ $stage == "all" ]; then
     echo "Prepare required data"
@@ -22,7 +23,7 @@ if [ $stage == "train" ] || [ $stage == "all" ]; then
     echo "Training..."
     torchrun --standalone --nnodes=1 --nproc_per_node=$num_gpus west/bin/train.py \
         --model_config_or_dir conf/touch_tts_config.json \
-        --data_path $data/libritts_shards_all_train.list \
+        --data_path $data/train.jsonl \
         --output_dir $dir \
         --pack_size 20000 \
         --bf16 True \
@@ -52,7 +53,7 @@ fi
 
 if [ $stage == "decode" ] || [ $stage == "all" ]; then
     echo "Decoding..."
-    test_jsonl=$data/libritts/small.test.syn.jsonl
+    test_jsonl=$data/libritts/test.jsonl
     mdir=$dir/checkpoint-${steps}
     adir=$(echo $mdir | sed 's:exp:exp_audio:g')
     mkdir -p $adir

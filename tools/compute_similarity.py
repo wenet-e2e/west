@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Copyright 2025 Hao Yin(1049755192@qq.com)
 
 import json
@@ -8,7 +6,7 @@ import sys
 
 import wespeaker
 
-# campplus: https://www.modelscope.cn/models/iic/speech_campplus_sv_zh-cn_16k-common  # noqa
+# https://wenet.org.cn/downloads?models=wespeaker&version=campplus_cn_common_200k.tar.gz # noqa
 model = wespeaker.load_model(model_id="campplus")
 
 prompts = {}

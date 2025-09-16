@@ -1,9 +1,9 @@
 {
     "fp16": {
-        "enabled": false
+        "enabled": "auto"
     },
     "bf16": {
-        "enabled": true,
+        "enabled": "auto",
         "loss_scale_window": 1000,
         "hysteresis": 2,
         "min_loss_scale": 1
@@ -59,7 +59,7 @@
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
     "wall_clock_breakdown": false,
-    
+
     "communication_data_type": "fp32",
     "prescale_gradients": false,
     "sparse_gradients": false,

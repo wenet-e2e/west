@@ -4,13 +4,15 @@
 [ ! -s tools ] && ln -s ../../../tools
 export PYTHONPATH=$PYTHONPATH:$PWD
 
-export CUDA_VISIBLE_DEVICES="2"  # Change this to all your available gpus, such as "0,1,2,3"
+export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"  # Change this to all your available gpus, such as "0,1,2,3"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F ',' '{print NF}')
 
 stage=train
 data=data
 dir=exp/touch_flow-Qwen2.5-0.5B-Audio-libritts
 steps=50000  # training steps
+
+. tools/parse_options.sh
 
 if [ $stage == "data" ] || [ $stage == "all" ]; then
     echo "Prepare required data"
@@ -21,7 +23,7 @@ if [ $stage == "train" ] || [ $stage == "all" ]; then
     echo "Training..."
     torchrun --standalone --nnodes=1 --nproc_per_node=$num_gpus west/bin/train.py \
         --model_config_or_dir conf/touch_flow_config.json \
-        --data_path $data/libritts_shards_all_train.list \
+        --data_path $data/train.jsonl \
         --output_dir $dir \
         --batch_size 64 \
         --bf16 False \
@@ -54,7 +56,7 @@ if [ $stage == "decode" ] || [ $stage == "all" ]; then
     mdir=$dir/${steps}
     adir=$(echo $mdir | sed 's:exp:exp_audio:g')
     mkdir -p $adir
-    test_jsonl=$data/libritts/small.test.syn.flow.jsonl
+    test_jsonl=$data/libritts/test.flow.jsonl
 
     # flow inference
     python west/bin/tts_flow_inference.py \

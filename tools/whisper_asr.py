@@ -1,24 +1,19 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Copyright 2025 Hao Yin(1049755192@qq.com)
 
 # whisper asr for compute wer.
 
-import sys
 import json
-import os
 import re
-from tqdm import tqdm
-from tn.english.normalizer import Normalizer as EnNormalizer
+import sys
 
 import whisper
+from tn.english.normalizer import Normalizer as EnNormalizer
+from tqdm import tqdm
 
 # TN
 en_tn_model = EnNormalizer(overwrite_cache=False)
 # ASR model
-model = whisper.load_model(
-    "/jfs-hdfs/user/xingchen.song/share/whisper/large-v3-turbo.pt"
-)  # noqa
+model = whisper.load_model("large-v3-turbo")
 
 
 # normalize the text & keep english characters only.
