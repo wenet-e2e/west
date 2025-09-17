@@ -9,10 +9,16 @@ First, prepare the train data `data/train.jsonl`, the data is like:
 ```
 where `wav` is the wav path, `txt` is the transcript.
 
+Then, prepare the pretrained LLM model, such as Qwen2.5-0.5B-Instruct,
+and add speech tokens to model & tokenizer like:
+```
+python add_speech_tokens.py Qwen2.5-0.5B-Instruct 4096 Qwen2.5-0.5B-Audio
+```
+
 To train the model, just run
 
 ``` shell
-bash run.sh --stage train
+bash run_llm.sh --stage train
 ```
 
 To decode, prepare the test data `data/test.jsonl`, the data is like:
@@ -27,7 +33,7 @@ where `key` is the unique id,
 
 
 ``` shell
-bash run.sh --stage decode
+bash run_llm.sh --stage decode
 ```
 
 ### TouchFlow
@@ -42,7 +48,7 @@ where `wav` is the wav path, `txt` is the transcript.
 To train the model, just run
 
 ``` shell
-bash run.sh --stage train
+bash run_flow.sh --stage train
 ```
 
 To decode, prepare the test data `data/test.flow.jsonl`, the data is like:
@@ -56,7 +62,7 @@ where `key` is the unique id, `wav` is the prompt wav path,
 
 
 ``` shell
-bash run.sh --stage decode
+bash run_flow.sh --stage decode
 ```
 
 ## Results
