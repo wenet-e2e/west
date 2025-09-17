@@ -127,6 +127,5 @@ class TouchTTS(PreTrainedModel, GenerationMixin):
     def init_tokenizer(self):
         tokenizer = AutoTokenizer.from_pretrained(
             self.config.llm_model_name_or_path)
-        if 'Qwen' in self.config.llm_model_name_or_path:
-            tokenizer.bos_token = "<|im_start|>"
+        tokenizer.bos_token = "<|im_start|>"
         return tokenizer

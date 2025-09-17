@@ -9,10 +9,10 @@ First, prepare the train data `data/train.jsonl`, the data is like:
 ```
 where `wav` is the wav path, `txt` is the transcript.
 
-Then, prepare the pretrained LLM model, such as Qwen2.5-0.5B-Instruct,
+Then, prepare the pretrained LLM model, such as Qwen/Qwen2.5-0.5B-Instruct,
 and add speech tokens to model & tokenizer like:
 ```
-python add_speech_tokens.py Qwen2.5-0.5B-Instruct 4096 Qwen2.5-0.5B-Audio
+python add_speech_tokens.py Qwen/Qwen2.5-0.5B-Instruct 4096 Qwen/Qwen2.5-0.5B-Audio
 ```
 
 To train the model, just run
