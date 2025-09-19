@@ -24,8 +24,8 @@ if [ $stage == "data" ] || [ $stage == "all" ]; then
     echo "Prepare required data"
     # TODO:
     mkdir $data
-    cp -r /jfs-hdfs/user/Archive/AQA/train/train_aishell2_shuffle_train_belle_1.4M.list $data/data.list
-    cp -r /jfs-hdfs/user/Archive/AQA/qa_test/chinese_qa.jsonl $data
+    cp -r /data/to//train_aishell2_shuffle_train_belle_1.4M.list $data/data.list
+    cp -r /data/to/chinese_qa.jsonl $data
 fi
 
 

@@ -1,10 +1,10 @@
 {
   "encoder_ds_rate": 4,
   "encoder_projector_ds_rate": 2,
-  "llm_model_name_or_path": "/bucket/output/jfs-hdfs/user/nlp/LLM/model_files/Qwen3-1.7B/",
+  "llm_model_name_or_path": "Qwen/Qwen3-1.7B",
   "lora_config": null,
   "model_type": "touch_asu",
   "projector_hidden_size": 2048,
   "transformers_version": "4.52.3",
-  "wenet_model_name_or_path": "/bucket/output/jfs-hdfs/user/chengdong01.liang/workspace/github/pretrain_model/firered-asr"
+  "wenet_model_name_or_path": "firered"
 }

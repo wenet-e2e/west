@@ -222,8 +222,7 @@ class SpeechDataset(IterableDataset):
 if __name__ == '__main__':
     from transformers import AutoConfig, AutoTokenizer
     config = AutoConfig.from_pretrained("conf/touch_asu_config.json")
-    tokenizer = AutoTokenizer.from_pretrained(
-        '/jfs-hdfs/user/binbin.zhang/huggingface/hub/Qwen2-1.5B-Instruct')
+    tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2-1.5B-Instruct')
     tokenizer.bos_token = tokenizer.eos_token
     print(tokenizer.bos_token_id)
     data_args = DataArguments

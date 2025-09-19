@@ -1,13 +1,10 @@
-import inspect
-
 import torch
 import torch.nn.functional as F
-
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 flash_attn = True
 
-model_dir = '/bucket/output/jfs-hdfs/user/binbin.zhang/huggingface/hub/Qwen2-1.5B-Instruct/'
+model_dir = 'Qwen/Qwen2-1.5B-Instruct'
 flash_kwargs = {
     'attn_implementation': 'flash_attention_2'
 } if flash_attn else {}
@@ -51,7 +48,8 @@ sim0 = F.cosine_similarity(out1.logits[0, :, :], out1.logits[1, :, :])
 print(sim0)
 sim1 = F.cosine_similarity(out1.logits[0, :, :], out2.logits[0, :token_len, :])
 print(sim1)
-sim2 = F.cosine_similarity(out1.logits[0, :, :], out2.logits[0, token_len:-2, :])
+sim2 = F.cosine_similarity(out1.logits[0, :, :], out2.logits[0,
+                                                             token_len:-2, :])
 print(sim2)
 
 print(out0.loss)

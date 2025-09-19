@@ -5,11 +5,12 @@
 # mel vocoder using bigvgan.
 # ref: https://huggingface.co/nvidia/bigvgan_base_22khz_80band
 
-import os
 import argparse
-import torch
-import numpy as np
+import os
+
 import bigvgan
+import numpy as np
+import torch
 from scipy.io import wavfile
 
 
@@ -90,7 +91,7 @@ def main():
     parser.add_argument(
         "--model_path",
         type=str,
-        default="/bucket/output/jfs-hdfs/user/hao.yin/share/bigvgan_base_22khz_80band",
+        default="/data/path/to/bigvgan_base_22khz_80band",
         help="Path to the pretrained BigVGAN model",
     )
     args = parser.parse_args()
