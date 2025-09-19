@@ -70,7 +70,7 @@ path/to/your/data2.tar
       },
       {
          "role":"assistant",
-         "content": ""your text4 here"
+         "content": "your text4 here"
       }
    ]
 }
