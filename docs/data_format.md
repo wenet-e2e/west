@@ -29,7 +29,7 @@ To support the aforementioned two training stages and consider data storage and 
 Here shows some examples:
 
 **Example: jsonl for Pre-training**
-``` jsonl
+```
 {"wav": "path/to/your/audio1.wav", "txt": "your text1 here"}
 {"wav": "path/to/your/audio2.wav", "txt": "your text2 here"}
 ...
