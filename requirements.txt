@@ -8,3 +8,4 @@ torchaudio>=2.6.0
 transformers==4.52.3
 webdataset==0.2.111
 git+https://github.com/wenet-e2e/wenet.git
+git+https://github.com/wenet-e2e/wespeaker.git
