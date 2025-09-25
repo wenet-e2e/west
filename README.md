@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Docs](https://img.shields.io/badge/Docs-latest-brightgreen.svg)](docs/)
-[![Paper](https://img.shields.io/badge/Paper-arXiv-f9f107.svg)](https://github.com/wenet-e2e/west/)
+[![Paper](https://img.shields.io/badge/Paper-arXiv-f9f107.svg)](https://arxiv.org/abs/2509.19902)
 [![WeChat](https://img.shields.io/badge/WeChat-07C160?style=flat&logo=wechat&logoColor=white)](#discussion--communication)
 
 
@@ -41,6 +41,8 @@ pip install -r requirements.txt
 
 
 ## Citation
+
+Our paper is available on [arXiv](https://arxiv.org/abs/2509.19902), and you can cite it as:
 
 ```
 @misc{zhang2025westllmbasedspeech,
