@@ -2,6 +2,7 @@
 
 from transformers import AutoConfig, AutoModel
 
+from west.models.osum_echat import OSUMEChatConfig, OSUMEChat
 from west.models.touch_asu import TouchASU, TouchASUConfig
 from west.models.touch_chat import TouchChat, TouchChatConfig
 from west.models.touch_flow import TouchFlow, TouchFlowConfig
@@ -15,3 +16,6 @@ AutoConfig.register("touch_flow", TouchFlowConfig)
 AutoModel.register(TouchFlowConfig, TouchFlow)
 AutoConfig.register("touch_tts", TouchTTSConfig)
 AutoModel.register(TouchTTSConfig, TouchTTS)
+
+AutoConfig.register("osum_echat", OSUMEChatConfig)
+AutoModel.register(OSUMEChatConfig, OSUMEChat)
