@@ -19,6 +19,11 @@ class ExtractorTouchTTS(Extractor):
         import s3tokenizer
         IGNORE_TOKEN_ID = LabelSmoother.ignore_index
         waveform, sample_rate = torchaudio.load(item['wav'])
+        duration = waveform.size(1) / sample_rate
+        if not self.inference and (
+                duration < self.model_config.min_speech_duration
+                or duration > self.model_config.max_speech_duration):
+            return None
         audio = torchaudio.transforms.Resample(sample_rate, 16000)(waveform)
         audio = audio[0]  # get the first channel
         mel = s3tokenizer.log_mel_spectrogram(audio)
