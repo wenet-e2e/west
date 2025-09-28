@@ -53,7 +53,7 @@ if [ $stage == "train" ] || [ $stage == "all" ]; then
         --gradient_checkpointing \
         --dataloader_num_workers 4 \
         --dataloader_prefetch_factor 10 \
-        --save_total_limit 10000 \
+        --ignore_data_skip True \
         --deepspeed conf/ds_config_zero2.json \
         --accelerator_config conf/accelerator_config.json
 fi
