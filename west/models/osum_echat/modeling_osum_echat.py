@@ -4,12 +4,15 @@ from typing import Optional
 
 import torch
 from torch import nn
-from transformers import AutoModel, GenerationMixin, PreTrainedModel, AutoConfig, AutoModelForCausalLM
+from transformers import AutoModel, GenerationMixin, PreTrainedModel, AutoConfig, AutoModelForCausalLM, AutoTokenizer, \
+    StoppingCriteriaList
+from .cumstom_stop_criteria import InterruptStopper, S2SStopCriteria, MaxTokenStopper
 
 from .configuration_osum_echat import OSUMEChatConfig
 import wenet
 from gxl_ai_utils.utils import utils_file
 from wenet.models.transformer.encoder import TransformerEncoder
+
 
 class ProjectorTransformerWithCov1d(nn.Module):
 
@@ -51,16 +54,14 @@ class ProjectorTransformerWithCov1d(nn.Module):
         conv_downsample_len = encoder_mask.squeeze(1).sum(-1)
         speech_embeds, encoder_mask = self.speech_transformer(conv_out, conv_downsample_len)
         speech_embeds4llm = self.speech_llama_proj(speech_embeds)
-        return speech_embeds4llm, encoder_mask
-
-
-
+        return speech_embeds4llm, encoder_mask.squeeze(1)
 
 
 class OSUMEChat(PreTrainedModel, GenerationMixin):
     model_type = 'osum_echat'
     config_class = OSUMEChatConfig
     supports_gradient_checkpointing = True
+
     def __init__(self, config: OSUMEChatConfig, *inputs, **kwargs):
         """
         TODO(Xuelong Geng): Complete the design of OSUMEChat
@@ -83,53 +84,58 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
                 torch_dtype='auto',
                 attn_implementation="flash_attention_2",  # or "flex_attention"
             )
+
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            config.llm_model_name_or_path, use_fast=False, trust_remote_code=True)
+        self.embed_tokens = self.llm.model.embed_tokens
         utils_file.logging_info(f'self.llm: {self.llm}')
         self.projector = ProjectorTransformerWithCov1d(
             encoder_dim=self.encoder.encoder.output_size(),
             llm_dim=llm_config.hidden_size,
-            )
+        )
         utils_file.logging_info(f'self.projector: {self.projector}')
 
         self.speech_token_emded = torch.nn.Embedding(config.speech_token_num + 2, llm_config.hidden_size)
         self.speech_head = torch.nn.Linear(llm_config.hidden_size, config.speech_token_num)
         self.add_embed_head = True
-
+        self.IGNORE_ID = -100
+        self.speech_token_num = config.speech_token_num
+        self.init_custom_stop_criteria()
 
     @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
     def forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        audio_offsets: Optional[torch.LongTensor] = None,
-        audio_features: Optional[torch.FloatTensor] = None,
-        audio_features_lengths: Optional[torch.LongTensor] = None,
-        talker_features: Optional[torch.FloatTensor] = None,
-        talker_features_lengths: Optional[torch.LongTensor] = None,
-        talker_offsets: Optional[torch.LongTensor] = None,
-        batch_idx: Optional[torch.LongTensor] = None,
-        has_audio: Optional[torch.BoolTensor] = None,
-        **kwargs,
+            self,
+            input_ids: torch.LongTensor = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            audio_offsets: Optional[torch.LongTensor] = None,
+            audio_features: Optional[torch.FloatTensor] = None,
+            audio_features_lengths: Optional[torch.LongTensor] = None,
+            talker_features: Optional[torch.FloatTensor] = None,
+            talker_features_lengths: Optional[torch.LongTensor] = None,
+            talker_offsets: Optional[torch.LongTensor] = None,
+            batch_idx: Optional[torch.LongTensor] = None,
+            has_audio: Optional[torch.BoolTensor] = None,
+            **kwargs,
     ):
         """
         TODO(Xuelong Geng): Complete the design of OSUMEChat
         """
 
-
     @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
     def generate(
-        self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        audio_offsets: Optional[torch.LongTensor] = None,
-        audio_features: Optional[torch.FloatTensor] = None,
-        audio_features_lengths: Optional[torch.LongTensor] = None,
-        batch_idx: Optional[torch.LongTensor] = None,
-        has_audio: Optional[torch.BoolTensor] = None,
-        **kwargs,
+            self,
+            input_ids: torch.LongTensor = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            audio_offsets: Optional[torch.LongTensor] = None,
+            audio_features: Optional[torch.FloatTensor] = None,
+            audio_features_lengths: Optional[torch.LongTensor] = None,
+            batch_idx: Optional[torch.LongTensor] = None,
+            has_audio: Optional[torch.BoolTensor] = None,
+            **kwargs,
     ):
         """
         TODO(Xuelong Geng): Complete the design of OSUMEChat
@@ -138,7 +144,9 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
         self.set_task_type("S2S")
         self.do_add_speech_embed_head()
         # =====================准备input embedding=====================
-        speech_embeds, speech_masks = self.encoder._forward_encoder(audio_features, audio_features_lengths)
+        encoder_out, encoder_mask = self.encoder._forward_encoder(audio_features, audio_features_lengths)
+        speech_embeds, speech_masks = self.projector(encoder_out, encoder_mask)
+
         speech_embeds, speech_masks, _ = self._add_bos_eos(0 + self.speech_token_num, None,
                                                            speech_embeds, speech_masks, None)
         device = speech_embeds.device
@@ -158,28 +166,25 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
         embeds = torch.cat(
             [prompt_pattern1_embeds, speech_embeds, token_emb, prompt_pattern2_embeds],
             dim=1)
-        atts = torch.ones(embeds.size()[:-1], dtype=torch.long).to(embeds.device)
-        if self.embed_tokens.weight.dtype == torch.float16:
-            embeds = embeds.to(torch.float16)
+        if self.embed_tokens.weight.dtype == torch.bfloat16:
+            embeds = embeds.to(torch.bfloat16)
 
         top_k = 10
         top_p = 0.9
         temperature = 1.2
         invalid_eos = 10000000
-        self.osum_chat_logit_processor1.init_match_found()  # 非think不用匹配
         llm_out = self.llm.generate(inputs_embeds=embeds,
-                                            max_new_tokens=self.max_length,
-                                            eos_token_id=invalid_eos,
-                                            cache_implementation="static",
-                                            do_sample=True,
-                                            temperature=temperature,
-                                            top_k=top_k,
-                                            top_p=top_p,
-                                            logits_processor=self.s2s_repetition_penalty,
-                                            stopping_criteria=self.s2s_stop_criteria,
-                                            do_compile=True,
-                                            repetition_penalty=1.0,
-                                            )
+                                    max_new_tokens=2000,
+                                    eos_token_id=invalid_eos,
+                                    cache_implementation="static",
+                                    do_sample=True,
+                                    temperature=temperature,
+                                    top_k=top_k,
+                                    top_p=top_p,
+                                    stopping_criteria=self.s2s_stop_criteria,
+                                    do_compile=True,
+                                    repetition_penalty=1.0,
+                                    )
 
         text_eos_idx = (llm_out[0] == 151645).nonzero(as_tuple=True)[0][0].item()
         text_res = llm_out[:, :text_eos_idx - 1]
@@ -192,7 +197,23 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
         """
         TODO(Xuelong Geng): Complete the design of OSUMEChat
         """
-        
+
+    def init_custom_stop_criteria(self):
+        """
+        创建需要的stop criteria
+        1. 对于t2t任务，遇到text_eos停止
+        2. 对于t2s任务，遇到speech_eos停止
+        3. 对于s2s任务，遇到speech_eos停止
+        同时要取消原本的停止条件
+        if generation_config._eos_token_tensor is not None:
+        取消 generation_config._eos_token_tensor 的停止，尝试直接给一个大于vocb_size的eos_token
+        """
+        self.interrupt = InterruptStopper()
+        self.s2s_stop_criteria = StoppingCriteriaList()
+        self.s2s_stop_criteria.append(S2SStopCriteria(text_eos_id=151645, speech_eos_id=self.speech_token_num - 1))
+        self.s2s_stop_criteria.append(MaxTokenStopper(2000))
+        self.s2s_stop_criteria.append(self.interrupt)
+
     def set_task_type(self, task_type: str):
         """设置任务类型，用于设置生成的初始类型
         Args:
@@ -211,6 +232,29 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
 
     def do_add_speech_embed_head(self):
         if self.add_embed_head:
-            self.llama_model.speech_token_emded = self.speech_token_emded.to(torch.bfloat16)
-            self.llama_model.speech_head = self.speech_head.to(torch.bfloat16)
+            self.llm.speech_token_emded = self.speech_token_emded.to(torch.bfloat16)
+            self.llm.speech_head = self.speech_head.to(torch.bfloat16)
             self.add_embed_head = False
+
+    def _add_bos_eos(self, bos, eos, inputs_embeds, attention_mask, target=None):
+        B = len(inputs_embeds)
+        bos_eos_target = torch.full([B, 1], self.IGNORE_ID).to(inputs_embeds.device)  # B,1
+        bos_eos_mask = torch.full([B, 1], True).to(inputs_embeds.device)  # B, 1
+
+        if bos is not None:
+            bos_embed = self.speech_token_emded(torch.full([B, 1],
+                                                           bos).to(inputs_embeds.device))  # B, 1, D
+            inputs_embeds = torch.cat((bos_embed, inputs_embeds), 1)  # B, (1+T), D
+            attention_mask = torch.cat((bos_eos_mask, attention_mask), 1)  # B, (1+T)
+            if target is not None:
+                target = torch.cat((bos_eos_target, target), 1)  # B, (1+T), D
+
+        if eos is not None:
+            eos_embed = self.speech_token_emded(torch.full([B, 1],
+                                                           eos).to(inputs_embeds.device))  # B, 1, D
+            inputs_embeds = torch.cat((inputs_embeds, eos_embed), 1)  # B, (1+T+1), D
+            attention_mask = torch.cat((attention_mask, bos_eos_mask), 1)  # B, (1+T+1)
+            if target is not None:
+                target = torch.cat((target, bos_eos_target), 1)  # B, (1+T+1), D
+
+        return inputs_embeds, attention_mask, target
