@@ -68,6 +68,8 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
         """
         super().__init__(config, *inputs, **kwargs)
         self.encoder = wenet.load_model(config.wenet_model_name_or_path)
+        del self.encoder.decoder
+        del self.encoder.ctc
         utils_file.logging_info(f'self.encoder: {self.encoder}')
         llm_config = AutoConfig.from_pretrained(config.llm_model_name_or_path)
         utils_file.logging_info(f'采用如下 LLM： {config.llm_model_name_or_path}')
@@ -75,13 +77,13 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
             utils_file.logging_info(f'No init llm, only load llm structure')
             self.llm = AutoModelForCausalLM.from_config(
                 llm_config,
-                torch_dtype=torch.bfloat16,
             )
+            self.llm.to(torch.bfloat16)
         else:
             self.llm = AutoModelForCausalLM.from_pretrained(
                 config.llm_model_name_or_path,
                 config=llm_config,
-                torch_dtype='auto',
+                torch_dtype=torch.bfloat16,
                 attn_implementation="flash_attention_2",  # or "flex_attention"
             )
 
