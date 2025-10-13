@@ -24,5 +24,4 @@ class OSUMEChatConfig(PretrainedConfig):
         self.speech_token_num = speech_token_num
 
 
-
 __all__ = ["OSUMEChatConfig"]

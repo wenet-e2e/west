@@ -3,6 +3,7 @@
 
 from west.dataset.extractor import Extractor
 
+
 class ExtractorOSUMEChat(Extractor):
 
     def __init__(self, tokenizer, model_config, inference=False):

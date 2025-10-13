@@ -6,10 +6,12 @@ import torchaudio
 
 from transformers import (AutoConfig, AutoModel)
 import sys
-sys.path.insert(0, '../')
-import west.models.osum_echat.patch4generate #make patch for generate
 
-def get_feat_from_wav_path(input_wav_path, device:torch.device=torch.device('cuda')):
+sys.path.insert(0, '../')
+import west.models.osum_echat.patch4generate  # make patch for generate
+
+
+def get_feat_from_wav_path(input_wav_path, device: torch.device = torch.device('cuda')):
     """..."""
     waveform, sample_rate = torchaudio.load(input_wav_path)
     if waveform.shape[0] > 1:
@@ -32,8 +34,10 @@ def get_feat_from_wav_path(input_wav_path, device:torch.device=torch.device('cud
     feat = feat.to(torch.bfloat16)
     return feat, feat_lens
 
+
 if __name__ == '__main__':
     from huggingface_hub import hf_hub_download
+
     # For natural language think model in west
     ckpt_path = hf_hub_download(repo_id="ASLP-lab/OSUM-EChat", filename="language_think_west.pt")
     osum_config_path = "../examples/aishell/asr/conf/osum_echat.json"

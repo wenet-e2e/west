@@ -12,19 +12,23 @@ from transformers.models.qwen2.modeling_qwen2 import (
     apply_rotary_pos_emb,
     repeat_kv,
     _prepare_4d_causal_attention_mask_with_cache_position,
-    )
+)
 from transformers.utils import logging
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.cache_utils import Cache, StaticCache
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
+
+
 class InferTaskCode:
     _ASR = 0
     _TTS = 1
     _S2S = 2
 
+
 logger = logging.get_logger(__name__)
 
 _GPU_QWEN_TORCH_COMPILE = True
+
 
 # ===================================================================
 # =============================Attention=============================
@@ -34,6 +38,7 @@ class GPUQwen2Attention(nn.Module):
     Multi-headed attention from 'Attention Is All You Need' paper. Modified to use sliding window attention: Longformer
     and "Generating Long Sequences with Sparse Transformers".
     """
+
     def __init__(self, config: Qwen2Config, layer_idx: Optional[int] = None):
         super().__init__()
         self.config = config
@@ -70,17 +75,17 @@ class GPUQwen2Attention(nn.Module):
             max_position_embeddings=self.max_position_embeddings,
             base=self.rope_theta,
         )
-   
+
     # Adapted from Qwen2Attention.forward
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
-        cache_position: Optional[torch.LongTensor] = None,
+            self,
+            hidden_states: torch.Tensor,
+            attention_mask: Optional[torch.Tensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            past_key_value: Optional[Cache] = None,
+            output_attentions: bool = False,
+            use_cache: bool = False,
+            cache_position: Optional[torch.LongTensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
 
@@ -153,15 +158,15 @@ class GPUQwen2DecoderLayer(nn.Module):
         self.post_attention_layernorm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        **kwargs,
+            self,
+            hidden_states: torch.Tensor,
+            attention_mask: Optional[torch.Tensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            past_key_value: Optional[Tuple[torch.Tensor]] = None,
+            output_attentions: Optional[bool] = False,
+            use_cache: Optional[bool] = False,
+            cache_position: Optional[torch.LongTensor] = None,
+            **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Args:
@@ -213,7 +218,8 @@ class GPUQwen2DecoderLayer(nn.Module):
             outputs += (present_key_value,)
 
         return outputs
-    
+
+
 # ===================================================================
 # ========================Qwen2ForCausalLM===========================
 # ===================================================================
@@ -223,22 +229,24 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
         self.compile_forward = torch.compile(self.simplify_forward, dynamic=False, fullgraph=True) \
             if _GPU_QWEN_TORCH_COMPILE else self.simplify_forward
         self.text_phase = True
+
     '''
     NOTE: 重写原Qwen2ForCausalLM forward函数，torchair直接编译原函数在返回CausalLMOutputWithPast时会出现编译错误
     '''
+
     def simplify_forward(self,
-            input_ids: torch.LongTensor = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_values: Optional[List[torch.FloatTensor]] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            labels: Optional[torch.LongTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
-            cache_position: Optional[torch.LongTensor] = None,
-            ):
+                         input_ids: torch.LongTensor = None,
+                         attention_mask: Optional[torch.Tensor] = None,
+                         position_ids: Optional[torch.LongTensor] = None,
+                         past_key_values: Optional[List[torch.FloatTensor]] = None,
+                         inputs_embeds: Optional[torch.FloatTensor] = None,
+                         labels: Optional[torch.LongTensor] = None,
+                         use_cache: Optional[bool] = None,
+                         output_attentions: Optional[bool] = None,
+                         output_hidden_states: Optional[bool] = None,
+                         return_dict: Optional[bool] = None,
+                         cache_position: Optional[torch.LongTensor] = None,
+                         ):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -259,21 +267,21 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
         )
 
         return outputs
-    
+
     def forward(self,
-            input_ids: torch.LongTensor = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_values: Optional[List[torch.FloatTensor]] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            labels: Optional[torch.LongTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
-            cache_position: Optional[torch.LongTensor] = None,
-            do_compile = True
-        ) -> Union[Tuple, CausalLMOutputWithPast]:
+                input_ids: torch.LongTensor = None,
+                attention_mask: Optional[torch.Tensor] = None,
+                position_ids: Optional[torch.LongTensor] = None,
+                past_key_values: Optional[List[torch.FloatTensor]] = None,
+                inputs_embeds: Optional[torch.FloatTensor] = None,
+                labels: Optional[torch.LongTensor] = None,
+                use_cache: Optional[bool] = None,
+                output_attentions: Optional[bool] = None,
+                output_hidden_states: Optional[bool] = None,
+                return_dict: Optional[bool] = None,
+                cache_position: Optional[torch.LongTensor] = None,
+                do_compile=True
+                ) -> Union[Tuple, CausalLMOutputWithPast]:
         if past_key_values is not None:
             past_key_values.training = False
         # print(self.text_phase)
@@ -286,40 +294,40 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
                 self.text_phase = False
             input_ids = None
 
-        if (inputs_embeds is not None and cache_position[0] == 0) or do_compile==False :
+        if (inputs_embeds is not None and cache_position[0] == 0) or do_compile == False:
             # prefill branch
             outputs = self.simplify_forward(input_ids,
-                            attention_mask,
-                            position_ids,
-                            past_key_values,
-                            inputs_embeds,
-                            labels,
-                            use_cache,
-                            output_attentions,
-                            output_hidden_states,
-                            return_dict,
-                            cache_position)
+                                            attention_mask,
+                                            position_ids,
+                                            past_key_values,
+                                            inputs_embeds,
+                                            labels,
+                                            use_cache,
+                                            output_attentions,
+                                            output_hidden_states,
+                                            return_dict,
+                                            cache_position)
         else:
             # decoding
             outputs = self.compile_forward(input_ids,
-                            attention_mask,
-                            position_ids,
-                            past_key_values,
-                            inputs_embeds,
-                            labels,
-                            use_cache,
-                            output_attentions,
-                            output_hidden_states,
-                            return_dict,
-                            cache_position)
-        
+                                           attention_mask,
+                                           position_ids,
+                                           past_key_values,
+                                           inputs_embeds,
+                                           labels,
+                                           use_cache,
+                                           output_attentions,
+                                           output_hidden_states,
+                                           return_dict,
+                                           cache_position)
+
         last_hidden_states = outputs.last_hidden_state
-        
+
         if self.text_phase:
             logits = self.lm_head(last_hidden_states)
         else:
             logits = self.speech_head(last_hidden_states)
-        
+
         logits = logits.float()
 
         return CausalLMOutputWithPast(
@@ -330,17 +338,16 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
             attentions=outputs.attentions,
         )
 
-
     def prepare_inputs_for_generation(
-        self,
-        input_ids,
-        past_key_values=None,
-        attention_mask=None,
-        inputs_embeds=None,
-        cache_position=None,
-        position_ids=None,
-        use_cache=True,
-        **kwargs,
+            self,
+            input_ids,
+            past_key_values=None,
+            attention_mask=None,
+            inputs_embeds=None,
+            cache_position=None,
+            position_ids=None,
+            use_cache=True,
+            **kwargs,
     ):
         """
         Mainly add static cache support
@@ -350,7 +357,7 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
         # Exception 2: some generation methods do special slicing of input_ids, so we don't need to do it here
         if past_key_values is not None:
             if inputs_embeds is not None:  # Exception 1
-                input_ids = input_ids[:, -cache_position.shape[0] :]
+                input_ids = input_ids[:, -cache_position.shape[0]:]
             elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
                 input_ids = input_ids[:, cache_position]
 
@@ -359,7 +366,7 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
-                position_ids = position_ids[:, -input_ids.shape[1] :]
+                position_ids = position_ids[:, -input_ids.shape[1]:]
                 # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`,
                 # as otherwise the input `position_ids` would have various stride during the decoding.
                 # Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case,
@@ -387,7 +394,8 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
             dtype = self.lm_head.weight.dtype
             min_dtype = torch.finfo(dtype).min
 
-            if inputs_embeds is not None and inputs_embeds.ndim == 2 or input_ids is not None and input_ids.size(-1) == 1:
+            if inputs_embeds is not None and inputs_embeds.ndim == 2 or input_ids is not None and input_ids.size(
+                    -1) == 1:
                 # we only expand attention mask in docoding mode
                 attention_mask = _prepare_4d_causal_attention_mask_with_cache_position(
                     attention_mask,
@@ -412,13 +420,14 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
         )
         return model_inputs
 
+
 # ===================================================================
 print("========================= DO Qwen2 PATCH ===========================")
 # ===================================================================
 # enable static cache
 (transformers.models.qwen2.modeling_qwen2.
- Qwen2PreTrainedModel)._supports_static_cache=True
-transformers.models.qwen2.modeling_qwen2\
+ Qwen2PreTrainedModel)._supports_static_cache = True
+transformers.models.qwen2.modeling_qwen2 \
     .Qwen2DecoderLayer = GPUQwen2DecoderLayer
 (transformers.models.qwen2
  .modeling_qwen2).Qwen2ForCausalLM = InferQwen2ForCausalLM

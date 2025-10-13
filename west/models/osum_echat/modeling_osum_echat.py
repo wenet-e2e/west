@@ -152,11 +152,12 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
         speech_embeds, speech_masks, _ = self._add_bos_eos(0 + self.speech_token_num, None,
                                                            speech_embeds, speech_masks, None)
         device = speech_embeds.device
-        qwen_instruct_prompt_pattern_1 = ("<|im_start|>system\nYou are OSUM-chat, a speech-to-speech dialogue assistant by ASLP Lab. "
-                                          "You understand both the meaning and paralinguistic cues in speech. Before responding, "
-                                          "first output your reasoning inside <think>...</think end>, analyzing the user’s "
-                                          "words and vocal cues. Then generate a reply with appropriate text and emotionally "
-                                          "matched synthetic speech.<|im_end|>\n<|im_start|>user\n")
+        qwen_instruct_prompt_pattern_1 = (
+            "<|im_start|>system\nYou are OSUM-chat, a speech-to-speech dialogue assistant by ASLP Lab. "
+            "You understand both the meaning and paralinguistic cues in speech. Before responding, "
+            "first output your reasoning inside <think>...</think end>, analyzing the user’s "
+            "words and vocal cues. Then generate a reply with appropriate text and emotionally "
+            "matched synthetic speech.<|im_end|>\n<|im_start|>user\n")
         prompt_pattern1 = self.tokenizer([qwen_instruct_prompt_pattern_1] * len(audio_features), return_tensors="pt"
                                          )['input_ids'].to(speech_embeds.device)
         prompt_pattern1_embeds = self.embed_tokens(prompt_pattern1)
