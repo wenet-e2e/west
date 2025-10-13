@@ -1,4 +1,5 @@
-import math
+# Copyright (c) 2025 Xuelong Geng(xlgeng@mail.nwpu.edu.cn)
+
 import torch
 import torch.nn as nn
 from typing import List, Optional, Tuple, Union
@@ -14,7 +15,7 @@ from transformers.models.qwen2.modeling_qwen2 import (
     )
 from transformers.utils import logging
 from transformers.modeling_outputs import CausalLMOutputWithPast
-from transformers.cache_utils import Cache, StaticCache, SlidingWindowCache
+from transformers.cache_utils import Cache, StaticCache
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
 class InferTaskCode:
     _ASR = 0
@@ -414,6 +415,7 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
 # ===================================================================
 print("========================= DO Qwen2 PATCH ===========================")
 # ===================================================================
-transformers.models.qwen2.modeling_qwen2.Qwen2PreTrainedModel._supports_static_cache = True # enable static cache
+# enable static cache
+transformers.models.qwen2.modeling_qwen2.Qwen2PreTrainedModel._supports_static_cache=True
 transformers.models.qwen2.modeling_qwen2.Qwen2DecoderLayer = GPUQwen2DecoderLayer
 transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = InferQwen2ForCausalLM

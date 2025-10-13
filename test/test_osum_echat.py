@@ -1,3 +1,4 @@
+# Copyright (c) 2025 Xuelong Geng(xlgeng@mail.nwpu.edu.cn)
 
 import librosa
 import torch
@@ -35,7 +36,7 @@ if __name__ == '__main__':
     from huggingface_hub import hf_hub_download
     # For natural language think model in west
     ckpt_path = hf_hub_download(repo_id="ASLP-lab/OSUM-EChat", filename="language_think_west.pt")
-    osum_config_path = ("../examples/aishell/asr/conf/osum_echat.json")
+    osum_config_path = "../examples/aishell/asr/conf/osum_echat.json"
     config_new = AutoConfig.from_pretrained(osum_config_path)
     osum_model = AutoModel.from_config(config_new)
     osum_model.eval()
@@ -46,7 +47,7 @@ if __name__ == '__main__':
     for key in unexpected_keys:
         print("unexpected tensor: {}".format(key))
     print(osum_model)
-    test_wav_path = "./test_wave4osumechat.wav"
+    test_wav_path = "./data/test_wave4osumechat.wav"
     fake_wav, faek_wav_lens = get_feat_from_wav_path(test_wav_path)
     osum_output = osum_model.generate(audio_features=fake_wav, audio_features_lengths=faek_wav_lens)
     print(osum_output)

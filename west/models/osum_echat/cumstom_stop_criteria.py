@@ -1,3 +1,5 @@
+# Copyright (c) 2025 Xuelong Geng(xlgeng@mail.nwpu.edu.cn)
+
 import torch
 from transformers.generation.logits_process import LogitsProcessor
 from transformers.generation.stopping_criteria import StoppingCriteria

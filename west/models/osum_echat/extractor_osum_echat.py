@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
+# Copyright (c) 2025 Xuelong Geng(xlgeng@mail.nwpu.edu.cn)
 
 
 from west.dataset.extractor import Extractor
