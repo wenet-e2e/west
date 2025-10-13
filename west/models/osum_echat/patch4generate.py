@@ -416,6 +416,9 @@ class InferQwen2ForCausalLM(Qwen2ForCausalLM):
 print("========================= DO Qwen2 PATCH ===========================")
 # ===================================================================
 # enable static cache
-transformers.models.qwen2.modeling_qwen2.Qwen2PreTrainedModel._supports_static_cache=True
-transformers.models.qwen2.modeling_qwen2.Qwen2DecoderLayer = GPUQwen2DecoderLayer
-transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = InferQwen2ForCausalLM
+(transformers.models.qwen2.modeling_qwen2.
+ Qwen2PreTrainedModel)._supports_static_cache=True
+transformers.models.qwen2.modeling_qwen2\
+    .Qwen2DecoderLayer = GPUQwen2DecoderLayer
+(transformers.models.qwen2
+ .modeling_qwen2).Qwen2ForCausalLM = InferQwen2ForCausalLM
