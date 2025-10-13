@@ -5,10 +5,8 @@ import torch
 import torchaudio
 
 from transformers import (AutoConfig, AutoModel)
-import sys
-
-sys.path.insert(0, '../')
-from west.models.osum_echat.patch4generate import do_patch
+from west.models.osum_echat.patch4generate import (
+    do_patch)
 
 do_patch()
 
