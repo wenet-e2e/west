@@ -6,6 +6,7 @@ from transformers.generation.stopping_criteria import StoppingCriteria
 
 
 class ASRLogitsProcessor(LogitsProcessor):
+
     def __init__(self, text_token_num: int):
         self.text_token_num = text_token_num
 
@@ -41,7 +42,8 @@ class S2SLogitsProcessor(LogitsProcessor):
 
     def __call__(self, input_ids, scores):
         print(input_ids.shape)
-        assert input_ids.size(0) == 1, "ERROR: S2SSpeechLogitsProcessor only support bs=1 now"
+        assert input_ids.size(
+            0) == 1, "ERROR: S2SSpeechLogitsProcessor only support bs=1 now"
         if self.text_phase:
             scores[..., self.text_token_num:] = torch.finfo(scores.dtype).min
         else:
@@ -64,16 +66,19 @@ class S2SStopCriteria(StoppingCriteria):
         self.text_eos_id = text_eos_id
         self.speech_eos_id = speech_eos_id
 
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs):
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor,
+                 **kwargs):
         _input_ids = input_ids.flatten().view(-1)
         if torch.isin(_input_ids, self.text_eos_id).any():
-            text_eos_idx = (_input_ids == self.text_eos_id).nonzero(as_tuple=True)[0][0].item()
+            text_eos_idx = (_input_ids == self.text_eos_id).nonzero(
+                as_tuple=True)[0][0].item()
             if torch.sum(_input_ids[text_eos_idx:] == self.speech_eos_id) > 1:
                 return True
         return False
 
 
 class MaxTokenStopper(StoppingCriteria):
+
     def __init__(self, max_tokens):
         self.max_tokens = max_tokens
 
@@ -86,11 +91,12 @@ class MaxTokenStopper(StoppingCriteria):
 
 
 class InterruptStopper(StoppingCriteria):
+
     def __init__(self):
         self.stop = False
 
     def __call__(self, input_ids, scores, **kwargs):
-        if self.stop == True:
+        if self.stop:
             # self.stop == False # reset
             return True
         else:

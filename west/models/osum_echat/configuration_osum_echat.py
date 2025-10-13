@@ -8,13 +8,13 @@ class OSUMEChatConfig(PretrainedConfig):
     model_type = "osum_echat"
 
     def __init__(
-            self,
-            llm_model_name_or_path: str = 'Qwen/Qwen2.5-3B-Instruct',
-            no_init_llm: bool = True,
-            wenet_model_name_or_path: str = 'whisper-medium',
-            lora_config: Optional[Dict[str, Any]] = None,
-            speech_token_num: int = 4097,
-            **kwargs,
+        self,
+        llm_model_name_or_path: str = 'Qwen/Qwen2.5-3B-Instruct',
+        no_init_llm: bool = True,
+        wenet_model_name_or_path: str = 'whisper-medium',
+        lora_config: Optional[Dict[str, Any]] = None,
+        speech_token_num: int = 4097,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.llm_model_name_or_path = llm_model_name_or_path
