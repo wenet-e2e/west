@@ -1,7 +1,8 @@
 # Copyright (c) 2025 Xuelong Geng(xlgeng@mail.nwpu.edu.cn)
 
-from transformers import PretrainedConfig
 from typing import Any, Dict, Optional
+
+from transformers import PretrainedConfig
 
 
 class OSUMEChatConfig(PretrainedConfig):

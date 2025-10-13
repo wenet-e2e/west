@@ -3,10 +3,9 @@
 import librosa
 import torch
 import torchaudio
+from transformers import AutoConfig, AutoModel
 
-from transformers import (AutoConfig, AutoModel)
-from west.models.osum_echat.patch4generate import (
-    do_patch)
+from west.models.osum_echat.patch4generate import do_patch
 
 do_patch()
 

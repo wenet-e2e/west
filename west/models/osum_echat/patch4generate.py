@@ -1,22 +1,18 @@
 # Copyright (c) 2025 Xuelong Geng(xlgeng@mail.nwpu.edu.cn)
 
+from typing import List, Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
-from typing import List, Optional, Tuple, Union
 import transformers.models
-from transformers.models.qwen2.modeling_qwen2 import (
-    Qwen2RotaryEmbedding,
-    Qwen2ForCausalLM,
-    Qwen2MLP,
-    Qwen2RMSNorm,
-    apply_rotary_pos_emb,
-    repeat_kv,
-    _prepare_4d_causal_attention_mask_with_cache_position,
-)
-from transformers.utils import logging
-from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.cache_utils import Cache, StaticCache
+from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
+from transformers.models.qwen2.modeling_qwen2 import (
+    Qwen2ForCausalLM, Qwen2MLP, Qwen2RMSNorm, Qwen2RotaryEmbedding,
+    _prepare_4d_causal_attention_mask_with_cache_position,
+    apply_rotary_pos_emb, repeat_kv)
+from transformers.utils import logging
 
 
 class InferTaskCode:

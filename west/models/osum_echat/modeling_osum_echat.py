@@ -3,21 +3,17 @@
 from typing import Optional
 
 import torch
-from torch import nn
-from transformers import (GenerationMixin,
-                          PreTrainedModel,
-                          AutoConfig,
-                          AutoModelForCausalLM,
-                          AutoTokenizer,
-                          StoppingCriteriaList)
-from .cumstom_stop_criteria import (
-    InterruptStopper, S2SStopCriteria,
-    MaxTokenStopper)
-
-from .configuration_osum_echat import OSUMEChatConfig
 import wenet
 from gxl_ai_utils.utils import utils_file
+from torch import nn
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                          GenerationMixin, PreTrainedModel,
+                          StoppingCriteriaList)
 from wenet.models.transformer.encoder import TransformerEncoder
+
+from .configuration_osum_echat import OSUMEChatConfig
+from .cumstom_stop_criteria import (InterruptStopper, MaxTokenStopper,
+                                    S2SStopCriteria)
 
 
 class ProjectorTransformerWithCov1d(nn.Module):
