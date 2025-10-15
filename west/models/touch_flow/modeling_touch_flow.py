@@ -12,7 +12,8 @@ import wespeaker
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedModel)
 
-from west.utils.mask import make_pad_mask, non_causal_mask
+from west.utils.mask import (add_optional_chunk_mask, make_pad_mask,
+                             mask_to_bias)
 from west.utils.utils import freeze_module
 
 from .configuration_touch_flow import TouchFlowConfig
@@ -148,7 +149,17 @@ class TouchFlow(PreTrainedModel):
                            dim=-1)  # (B, T, 5*M)
         inputs = self.input_projector(inputs)  # (B, T, D)
         mask = ~make_pad_mask(mel_vocoder_lengths).to(device)  # (B, T)
-        att_mask = non_causal_mask(mel_vocoder_lengths).to(device)  # (B, T, T)
+        att_mask = add_optional_chunk_mask(
+            xs=token_cond, masks=mask.unsqueeze(1),
+            use_dynamic_chunk=self.config.use_dynamic_chunk,
+            use_dynamic_left_chunk=self.config.use_dynamic_left_chunk,
+            decoding_chunk_size=self.config.decoding_chunk_size,
+            static_chunk_size=self.config.static_chunk_size,
+            num_decoding_left_chunks=self.config.num_decoding_left_chunks,
+            enable_full_context=self.config.enable_full_context,
+            max_chunk_size=self.config.max_chunk_size)  # (B, T, T)
+        if self.llm.config._attn_implementation == "sdpa":
+            att_mask = mask_to_bias(att_mask, token_cond.dtype)
         att_mask = att_mask.unsqueeze(1).float()  # (B, 1, T, T)
         result = self.llm.model(inputs_embeds=inputs,
                                 attention_mask=att_mask,
@@ -213,7 +224,18 @@ class TouchFlow(PreTrainedModel):
         x_in[0:1, :, 3 * M:4 * M] = spk_cond
         x_in[0:1, :, 4 * M:5 * M] = mel_cond
         vocoder_lengths = torch.tensor([T], dtype=torch.long, device=device)
-        att_mask = non_causal_mask(vocoder_lengths).to(device)  # (B, T, T)
+        mask = ~make_pad_mask(vocoder_lengths).to(device)  # (B, T)
+        att_mask = add_optional_chunk_mask(
+            xs=token_cond, masks=mask.unsqueeze(1),
+            use_dynamic_chunk=self.config.use_dynamic_chunk,
+            use_dynamic_left_chunk=self.config.use_dynamic_left_chunk,
+            decoding_chunk_size=self.config.decoding_chunk_size,
+            static_chunk_size=self.config.static_chunk_size,
+            num_decoding_left_chunks=self.config.num_decoding_left_chunks,
+            enable_full_context=self.config.enable_full_context,
+            max_chunk_size=self.config.max_chunk_size)  # (B, T, T)
+        if self.llm.config._attn_implementation == "sdpa":
+            att_mask = mask_to_bias(att_mask, token_cond.dtype)
         att_mask = att_mask.unsqueeze(1).float()  # (B, 1, T, T)
         for step in range(1, len(t_span)):
             x_in[:, :, 0:M] = pt
@@ -239,6 +261,6 @@ class TouchFlow(PreTrainedModel):
 
     def init_tokenizer(self):
         tokenizer = AutoTokenizer.from_pretrained(
-            self.config.llm_model_name_or_path)
+            self.config.text_tokenizer_path)
         tokenizer.bos_token = "<|im_start|>"
         return tokenizer
