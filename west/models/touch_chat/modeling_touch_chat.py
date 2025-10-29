@@ -63,7 +63,7 @@ class TouchChat(PreTrainedModel, GenerationMixin):
             has_audio=has_audio,
             output_hidden_states=True,  # return hidden states
             **kwargs)
-        hidden_state = thinker_out.hidden_states[-1]  # last hidden
+        hidden_state = thinker_out.hidden_states[0]  # talker input
         hidden_embs = self.projector(hidden_state)
         out = self.talker(input_ids=input_ids,
                           attention_mask=attention_mask,
@@ -107,9 +107,15 @@ class TouchChat(PreTrainedModel, GenerationMixin):
                                     device=input_ids.device)
         print('text len', text_lengths)
         print(self.tokenizer.batch_decode(thinker_out.sequences.tolist()))
-        hidden_state = torch.cat([x[-1] for x in thinker_out.hidden_states],
-                                 dim=1)
-        hidden_embs = self.projector(hidden_state)
+        talker_input_embeds = torch.cat(
+            [x[0] for x in thinker_out.hidden_states], dim=1)
+        talker_bos_id = torch.tensor(self.tokenizer.encode("<im_end>\n"),
+                                     dtype=torch.long,
+                                     device=input_ids.device).unsqueeze(0)
+        talker_bos_embed = self.thinker.get_input_embeddings()(talker_bos_id)
+        talker_input_embeds = torch.cat([talker_input_embeds, talker_bos_embed],
+                                        dim=1)
+        hidden_embs = self.projector(talker_input_embeds)
         model_outputs = self.talker.generate(
             text_lengths=text_lengths,
             inputs_embeds=hidden_embs,

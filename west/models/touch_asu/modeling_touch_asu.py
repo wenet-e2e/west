@@ -76,6 +76,9 @@ class TouchASU(PreTrainedModel, GenerationMixin):
     def tie_weights(self):
         return self.llm.tie_weights()
 
+    def get_input_embeddings(self):
+        return self.llm.get_input_embeddings()
+
     def get_speech_embeddings(self, audio_features, audio_features_lengths):
         speech_emb, mask = self.encoder._forward_encoder(
             audio_features, audio_features_lengths)
