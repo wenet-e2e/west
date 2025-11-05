@@ -19,6 +19,7 @@ class TouchASUConfig(PretrainedConfig):
         lora_config: Optional[Dict[str, Any]] = None,
         max_speech_frames: int = 2000,  # 20s
         min_speech_frames: int = 20,  # 0.2s
+        projector_type: str = 'conv1d',
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -31,6 +32,7 @@ class TouchASUConfig(PretrainedConfig):
         self.hidden_size = hidden_size
         self.max_speech_frames = max_speech_frames
         self.min_speech_frames = min_speech_frames
+        self.projector_type = projector_type
 
 
 __all__ = ["TouchASUConfig"]
