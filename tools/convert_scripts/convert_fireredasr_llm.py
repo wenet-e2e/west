@@ -182,8 +182,7 @@ def main():
     os.makedirs(args.output_dir)
 
     state_dict = convert_to_west_state_dict(
-        checkpoint["model_state_dict"],
-        os.path.join(args.output_dir, 'wenet_firered.pt'))
+        checkpoint["model_state_dict"])
 
     with open(os.path.join(args.output_dir, 'config.json'), 'w') as f:
         configs = get_configs(args.llm_model_dir, args.wenet_model_dir)
@@ -191,7 +190,9 @@ def main():
         json.dump(configs, f, indent=4)
 
     config = AutoConfig.from_pretrained(f'{args.output_dir}/config.json')
+    print(f"Config: {config}")
     model = AutoModel.from_config(config)
+    print(f"Model: {model}") 
     tokenizer = model.init_tokenizer()
     print("Loading fireredasr-llm weights")
     model.load_state_dict(state_dict, strict=False)
