@@ -1,5 +1,7 @@
 # Copyright 2025 Chengdong Liang(liangchengdongd@qq.com)
 
+# This script is used to fine-tune [FireRedASR-LLM-L](https://huggingface.co/FireRedTeam/FireRedASR-LLM-L).
+
 [ ! -s west ] && ln -s ../../../west
 [ ! -s tools ] && ln -s ../../../tools
 export PYTHONPATH=$PYTHONPATH:$PWD
