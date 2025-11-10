@@ -84,6 +84,9 @@ class TouchASU(PreTrainedModel, GenerationMixin):
             attn_implementation="flash_attention_2",  # or "flex_attention"
         )
         self.encoder = wenet.load_model(config.wenet_model_name_or_path)
+        # remove decoder and ctc, keep encoder only
+        del self.encoder.decoder
+        del self.encoder.ctc
         encoder_dim = self.encoder.encoder.output_size()
         config.hidden_size = llm_config.hidden_size  # for deepseed training
         if config.projector_type == 'conv1d':
