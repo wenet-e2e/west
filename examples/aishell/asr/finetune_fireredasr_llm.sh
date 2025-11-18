@@ -15,6 +15,8 @@ fireredasr_llm_dir=/path/to/FireRedASR-LLM-L
 dir=exp/Qwen2-7B-Instruct-firered
 steps=5000  # training steps
 
+. tools/parse_options.sh
+
 if [ $stage == "data" ] || [ $stage == "all" ]; then
     echo "Prepare required data"
 fi

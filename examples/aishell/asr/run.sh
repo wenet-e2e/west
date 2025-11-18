@@ -20,6 +20,7 @@ steps=5000  # training steps
 model_conf=conf/qwen2-7b_firered.json
 decode_conf=conf/generation_config.json
 
+. tools/parse_options.sh
 
 if [ $stage == "data" ] || [ $stage == "all" ]; then
     echo "Prepare required data"

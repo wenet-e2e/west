@@ -19,6 +19,7 @@ dir=exp/Qwe3-1.7B-Instruct-firered-${pack_size}-${lr_rate}-QA
 
 # Note: Change your model settings in `conf/touch_asu_config.json`
 
+. tools/parse_options.sh
 
 if [ $stage == "data" ] || [ $stage == "all" ]; then
     echo "Prepare required data"
