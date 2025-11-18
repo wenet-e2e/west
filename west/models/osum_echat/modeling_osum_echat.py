@@ -5,13 +5,16 @@ from typing import Optional
 import torch
 import wenet
 from gxl_ai_utils.utils import utils_file
+from peft import LoraConfig, get_peft_model
 from torch import nn
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           GenerationMixin, PreTrainedModel,
                           StoppingCriteriaList)
 from wenet.models.transformer.encoder import TransformerEncoder
 
-from .configuration_osum_echat import OSUMEChatConfig
+from west.utils.utils import freeze_module
+
+from .configuration_osum_echat import OSUMConfig, OSUMEChatConfig
 from .cumstom_stop_criteria import (InterruptStopper, MaxTokenStopper,
                                     S2SStopCriteria)
 
@@ -65,24 +68,15 @@ class ProjectorTransformerWithCov1d(nn.Module):
             1)
 
 
-class OSUMEChat(PreTrainedModel, GenerationMixin):
-    model_type = 'osum_echat'
-    config_class = OSUMEChatConfig
+class OSUM(PreTrainedModel, GenerationMixin):
+    """OSUM: https://arxiv.org/pdf/2501.13306
+    """
+    model_type = 'osum'
+    config_class = OSUMConfig
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: OSUMEChatConfig,
-                 *inputs, **kwargs):
-        """
-        TODO(Xuelong Geng): Complete the design of OSUMEChat
-        """
-        super().__init__(config, *inputs,
-                         **kwargs)
-        self.encoder = wenet.load_model(
-            config.wenet_model_name_or_path)
-        del self.encoder.decoder
-        del self.encoder.ctc
-        utils_file.logging_info(
-            f'self.encoder: {self.encoder}')
+    def __init__(self, config: OSUMConfig):
+        super().__init__(config)
         llm_config = AutoConfig.from_pretrained(
             config.llm_model_name_or_path)
         utils_file.logging_info(
@@ -92,8 +86,7 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
             utils_file.logging_info(
                 'No init llm, only load llm structure'
             )
-            self.llm = AutoModelForCausalLM.from_config(
-                llm_config, )
+            self.llm = AutoModelForCausalLM.from_config(llm_config)
             self.llm.to(torch.bfloat16)
         else:
             self.llm = AutoModelForCausalLM.from_pretrained(
@@ -103,32 +96,221 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
                 attn_implementation="flash_attention_2",
                 # or "flex_attention"
             )
+        config.hidden_size = llm_config.hidden_size
+        self.encoder = wenet.load_model(config.wenet_model_name_or_path)
+        # remove decoder and ctc, keep encoder only
+        del self.encoder.decoder
+        del self.encoder.ctc
+        utils_file.logging_info(f'self.encoder: {self.encoder}')
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            config.llm_model_name_or_path,
-            use_fast=False,
-            trust_remote_code=True)
-        self.embed_tokens = self.llm.model.embed_tokens
-        utils_file.logging_info(
-            f'self.llm: {self.llm}')
+        # self.embed_tokens = self.llm.model.embed_tokens
+
         self.projector = ProjectorTransformerWithCov1d(
-            encoder_dim=self.encoder.encoder.
-            output_size(),
+            encoder_dim=self.encoder.encoder.output_size(),
             llm_dim=llm_config.hidden_size,
         )
+        total_params = sum(p.numel() for p in self.projector.parameters())
         utils_file.logging_info(
-            f'self.projector: {self.projector}')
+            'self.projector: {}, projector total params: {:.2f}M'.format(
+                self.projector, total_params / 1024 / 1024
+            )
+        )
 
-        self.speech_token_emded = torch.nn.Embedding(
-            config.speech_token_num + 2,
-            llm_config.hidden_size)
-        self.speech_head = torch.nn.Linear(
-            llm_config.hidden_size,
-            config.speech_token_num)
+        if config.lora_config is not None:
+            lora_config = LoraConfig(**config.lora_config)
+            self.llm = get_peft_model(self.llm, lora_config)
+            self.llm.print_trainable_parameters()
+
+        if config.freeze_encoder:
+            self.freeze_encoder()
+        if config.lora_config is None and config.freeze_llm:
+            self.freeze_llm()
+
         self.add_embed_head = True
         self.IGNORE_ID = -100
         self.speech_token_num = config.speech_token_num
+        self.speech_token_emded = torch.nn.Embedding(
+            config.speech_token_num + 2,
+            llm_config.hidden_size)
+
+    def tie_weights(self):
+        return self.llm.tie_weights()
+
+    def get_speech_embeddings(self, audio_features, audio_features_lengths):
+        encoder_out, encoder_mask = self.encoder._forward_encoder(
+            audio_features, audio_features_lengths
+        )
+        speech_embeds, speech_masks = self.projector(encoder_out, encoder_mask)
+        speech_embeds, speech_masks, _ = self._add_bos_eos(
+            0 + self.config.speech_token_num, 1 + self.config.speech_token_num,
+            speech_embeds, speech_masks, None,
+        )
+        speech_embeds_lens = speech_masks.sum(-1)
+
+        return speech_embeds, speech_embeds_lens
+
+    def compute_mix_embedding(
+        self,
+        input_ids: torch.LongTensor = None,
+        audio_offsets: Optional[torch.LongTensor] = None,
+        audio_features: Optional[torch.FloatTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
+        batch_idx: Optional[torch.LongTensor] = None,
+    ):
+        text_emb = self.llm.get_input_embeddings()(input_ids)
+        speech_emb, speech_emb_lens = self.get_speech_embeddings(
+            audio_features, audio_features_lengths
+        )
+        # speech_emb_lens = speech_emb.shape[1]
+        inputs_embeds = text_emb
+        for i in range(audio_features.size(0)):
+            b = batch_idx[i]
+            s, e = audio_offsets[i], audio_offsets[i] + speech_emb_lens[i]
+            inputs_embeds[b, s:e, :] = speech_emb[i, :speech_emb_lens[i], :]
+        return inputs_embeds
+
+    @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        audio_offsets: Optional[torch.LongTensor] = None,
+        audio_features: Optional[torch.FloatTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
+        batch_idx: Optional[torch.LongTensor] = None,
+        **kwargs,
+    ):
+        inputs_embeds = self.compute_mix_embedding(
+            input_ids,
+            audio_offsets,
+            audio_features,
+            audio_features_lengths,
+            batch_idx,
+        )
+        out = self.llm(inputs_embeds=inputs_embeds,
+                       attention_mask=attention_mask,
+                       labels=labels,
+                       position_ids=position_ids,
+                       **kwargs)
+        return out
+
+    @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    def generate(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        audio_offsets: Optional[torch.LongTensor] = None,
+        audio_features: Optional[torch.FloatTensor] = None,
+        audio_features_lengths: Optional[torch.LongTensor] = None,
+        batch_idx: Optional[torch.LongTensor] = None,
+        **kwargs,
+    ):
+        inputs_embeds = self.compute_mix_embedding(
+            input_ids,
+            audio_offsets,
+            audio_features,
+            audio_features_lengths,
+            batch_idx,
+        )
+        model_outputs = self.llm.generate(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            eos_token_id=151643,
+            max_new_tokens=400,
+            do_sample=True,
+            top_p=0.9,
+            top_k=5,
+            repetition_penalty=1.05,
+            length_penalty=1.0,
+            temperature=1.0,
+            num_beams=4,
+            **kwargs,
+        )
+        return model_outputs
+
+    def enable_input_require_grads(self):
+        self.llm.enable_input_require_grads()
+
+    def freeze_encoder(self):
+        freeze_module(self.encoder)
+        self.encoder.eval()
+
+    def freeze_llm(self):
+        freeze_module(self.llm)
+
+    def init_tokenizer(self):
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.config.llm_model_name_or_path,
+            padding_side="right",
+            use_fast=False,
+            trust_remote_code=True)
+        return self.tokenizer
+
+    def _add_bos_eos(self,
+                     bos,
+                     eos,
+                     inputs_embeds,
+                     attention_mask,
+                     target=None):
+        B = len(inputs_embeds)
+        bos_eos_target = torch.full(
+            [B, 1], self.IGNORE_ID).to(
+            inputs_embeds.device)  # B,1
+        bos_eos_mask = torch.full(
+            [B, 1],
+            True).to(inputs_embeds.device)  # B, 1
+
+        if bos is not None:
+            bos_embed = self.speech_token_emded(
+                torch.full([B, 1], bos).to(
+                    inputs_embeds.device)
+            )  # B, 1, D
+            inputs_embeds = torch.cat(
+                (bos_embed, inputs_embeds),
+                1)  # B, (1+T), D
+            attention_mask = torch.cat(
+                (bos_eos_mask, attention_mask),
+                1)  # B, (1+T)
+            if target is not None:
+                target = torch.cat(
+                    (bos_eos_target, target),
+                    1)  # B, (1+T), D
+
+        if eos is not None:
+            eos_embed = self.speech_token_emded(
+                torch.full([B, 1], eos).to(
+                    inputs_embeds.device)
+            )  # B, 1, D
+            inputs_embeds = torch.cat(
+                (inputs_embeds, eos_embed),
+                1)  # B, (1+T+1), D
+            attention_mask = torch.cat(
+                (attention_mask, bos_eos_mask),
+                1)  # B, (1+T+1)
+            if target is not None:
+                target = torch.cat(
+                    (target, bos_eos_target),
+                    1)  # B, (1+T+1), D
+
+        return inputs_embeds, attention_mask, target
+
+
+class OSUMEChat(OSUM):
+    """OSUMEChat: https://arxiv.org/pdf/2508.09600
+    """
+    model_type = 'osum_echat'
+    config_class = OSUMEChatConfig
+    supports_gradient_checkpointing = True
+
+    def __init__(self, config: OSUMEChatConfig):
+        super().__init__(config)
         self.init_custom_stop_criteria()
+        self.speech_head = torch.nn.Linear(
+            self.llm.config.hidden_size,
+            config.speech_token_num)
 
     @torch.autocast(device_type="cuda",
                     dtype=torch.bfloat16)
@@ -229,7 +411,7 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
         prompt_pattern2_embeds = self.embed_tokens(
             prompt_pattern2)
 
-        hyps = [4098]
+        hyps = [4098]  # for generate start
         token_emb = self.speech_token_emded(
             torch.tensor(hyps[-1:]).to(
                 device)).unsqueeze(0)
@@ -272,11 +454,6 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
             add_special_tokens=False,
             skip_special_tokens=True)
         return (output_text, text_res, speech_res)
-
-    def init_tokenizer(self):
-        """
-        TODO(Xuelong Geng): Complete the design of OSUMEChat
-        """
 
     def init_custom_stop_criteria(self):
         """
@@ -323,51 +500,3 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
             self.llm.speech_head = self.speech_head.to(
                 torch.bfloat16)
             self.add_embed_head = False
-
-    def _add_bos_eos(self,
-                     bos,
-                     eos,
-                     inputs_embeds,
-                     attention_mask,
-                     target=None):
-        B = len(inputs_embeds)
-        bos_eos_target = torch.full(
-            [B, 1], self.IGNORE_ID).to(
-            inputs_embeds.device)  # B,1
-        bos_eos_mask = torch.full(
-            [B, 1],
-            True).to(inputs_embeds.device)  # B, 1
-
-        if bos is not None:
-            bos_embed = self.speech_token_emded(
-                torch.full([B, 1], bos).to(
-                    inputs_embeds.device)
-            )  # B, 1, D
-            inputs_embeds = torch.cat(
-                (bos_embed, inputs_embeds),
-                1)  # B, (1+T), D
-            attention_mask = torch.cat(
-                (bos_eos_mask, attention_mask),
-                1)  # B, (1+T)
-            if target is not None:
-                target = torch.cat(
-                    (bos_eos_target, target),
-                    1)  # B, (1+T), D
-
-        if eos is not None:
-            eos_embed = self.speech_token_emded(
-                torch.full([B, 1], eos).to(
-                    inputs_embeds.device)
-            )  # B, 1, D
-            inputs_embeds = torch.cat(
-                (inputs_embeds, eos_embed),
-                1)  # B, (1+T+1), D
-            attention_mask = torch.cat(
-                (attention_mask, bos_eos_mask),
-                1)  # B, (1+T+1)
-            if target is not None:
-                target = torch.cat(
-                    (target, bos_eos_target),
-                    1)  # B, (1+T+1), D
-
-        return inputs_embeds, attention_mask, target
