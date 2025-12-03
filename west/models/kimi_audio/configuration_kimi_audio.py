@@ -110,7 +110,6 @@ class KimiAudioConfig(Qwen2Config):
     def __init__(
         self,
         llm_model_name_or_path: str = '',
-        wenet_model_name_or_path: str = '',
         speech_tokenizer_name_or_path: str = '',
         encoder_ds_rate: int = 2,
         encoder_projector_ds_rate: int = 4,
@@ -120,7 +119,6 @@ class KimiAudioConfig(Qwen2Config):
     ):
         super().__init__(**kwargs)
         self.llm_model_name_or_path = llm_model_name_or_path
-        self.wenet_model_name_or_path = wenet_model_name_or_path
         self.speech_tokenizer_name_or_path = speech_tokenizer_name_or_path
         self.encoder_ds_rate = encoder_ds_rate
         self.encoder_projector_ds_rate = encoder_projector_ds_rate

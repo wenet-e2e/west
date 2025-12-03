@@ -1,0 +1,5 @@
+{
+  "llm_model_name_or_path": "moonshotai/Kimi-Audio-7B-Instruct",
+  "model_type": "kimi_audio",
+  "speech_tokenizer_name_or_path": "THUDM/glm-4-voice-tokenizer"
+}
