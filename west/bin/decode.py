@@ -1,5 +1,6 @@
 # Copyright (c) 2025 Binbin Zhang(binbzha@qq.com)
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 
@@ -7,7 +8,7 @@ import torch
 from accelerate import Accelerator
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoModel, HfArgumentParser
+from transformers import AutoConfig, AutoModel, HfArgumentParser
 
 from west.dataset.dataset import DataArguments, SpeechDataset
 from west.dataset.extractor import Extractor
@@ -22,7 +23,11 @@ class DecodeArguments:
 def main():
     parser = HfArgumentParser((DataArguments, DecodeArguments))
     data_args, decode_args = parser.parse_args_into_dataclasses()
-    model = AutoModel.from_pretrained(decode_args.model_dir)
+    if os.path.isfile(decode_args.model_dir):
+        config = AutoConfig.from_pretrained(decode_args.model_dir)
+        model = AutoModel.from_config(config)
+    else:
+        model = AutoModel.from_pretrained(decode_args.model_dir)
     tokenizer = model.init_tokenizer()
     extractor = Extractor.get_class(model.model_type)(tokenizer,
                                                       model.config,
