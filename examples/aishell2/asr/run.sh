@@ -57,7 +57,7 @@ if [ $stage == "decode" ] || [ $stage == "all" ]; then
     cp $decode_conf $mdir
     python west/bin/decode.py \
         --data_path $data/test.jsonl \
-        --model_dir $mdir \
+        --model_config_or_dir $mdir \
         --result_path $mdir/result.jsonl
     python tools/compute_wer.py --char=1 --v=1 \
         $data/test.jsonl $mdir/result.jsonl > $mdir/result.wer

@@ -1,0 +1,38 @@
+{
+  "architectures": [
+    "FireredASRLLMConfig"
+  ],
+  "encoder_ds_rate": 4,
+  "encoder_projector_ds_rate": 2,
+  "hidden_size": 3584,
+  "llm_model_name_or_path": "Qwen/Qwen2-7B-Instruct",
+  "lora_config": {
+    "inference_mode": false,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "r": 64,
+    "target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj",
+      "up_proj",
+      "gate_proj",
+      "down_proj"
+    ],
+    "task_type": "CAUSAL_LM"
+  },
+  "max_speech_frames": 3000,
+  "min_speech_frames": 20,
+  "model_type": "fireredasr_llm",
+  "projector_hidden_size": 3584,
+  "pretrained_checkpoint": "FireRedASR-LLM-L/model.pth.tar",
+  "torch_dtype": "bfloat16",
+  "transformers_version": "4.52.3",
+  "wenet_model_name_or_path": "firered",
+  "max_new_tokens": 100,
+  "num_beams": 3,
+  "do_sample": false,
+  "repetition_penalty": 3.0,
+  "eos_token_id": [151645, 151643]
+}

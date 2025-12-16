@@ -13,18 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
 import copy
-import json
-import os
 
 import torch
-from transformers import AutoConfig, AutoModel
-
-import west  # for init touchasu model.  # noqa
 
 
-def convert_to_west_state_dict(firered_state_dict):
+def convert_to_west_state_dict(pretrained_checkpoint):
+    firered_state_dict = torch.load(pretrained_checkpoint,
+                                    map_location="cpu",
+                                    weights_only=False)["model_state_dict"]
     wenet_state_dict = {}
     unused = []
     print(
@@ -120,87 +117,3 @@ def convert_to_west_state_dict(firered_state_dict):
         "DONE\n===================== End CKPT Conversion ====================\n"
     )
     return wenet_state_dict
-
-
-def get_configs(llm_model_dir, wenet_model_dir):
-    configs = {
-        "encoder_ds_rate": 4,
-        "encoder_projector_ds_rate": 2,
-        "llm_model_name_or_path": llm_model_dir,
-        "lora_config": {
-            "inference_mode": False,
-            "lora_alpha": 16,
-            "lora_dropout": 0.05,
-            "r": 64,
-            "target_modules": [
-                "q_proj",
-                "k_proj",
-                "v_proj",
-                "o_proj",
-                "up_proj",
-                "gate_proj",
-                "down_proj"
-            ],
-            "task_type": "CAUSAL_LM"
-        },
-        "model_type": "touch_asu",
-        "projector_hidden_size": 3584,
-        "projector_type": "linear",
-        "transformers_version": "4.52.3",
-        "wenet_model_name_or_path": wenet_model_dir,
-    }
-    return configs
-
-
-def get_args():
-    parser = argparse.ArgumentParser(description='load and parse whisper')
-    # yapf: disable
-    parser.add_argument(
-        '--firered_model_dir',
-        required=True,
-        help='https://huggingface.co/FireRedTeam/FireRedASR-AED-L/tree/main'
-    )
-    # yapf: enable
-    parser.add_argument('--output_dir',
-                        default='./fireredasr-llm',
-                        help='output file in west\'s style')
-    parser.add_argument('--llm_model_dir',
-                        default='Qwen/Qwen2-7B-Instruct')
-    parser.add_argument('--wenet_model_dir',
-                        default='firered')
-    args = parser.parse_args()
-    return args
-
-
-def main():
-    args = get_args()
-    checkpoint = torch.load(os.path.join(args.firered_model_dir,
-                                         'model.pth.tar'),
-                            map_location="cpu",
-                            weights_only=False)
-
-    os.makedirs(args.output_dir)
-
-    state_dict = convert_to_west_state_dict(
-        checkpoint["model_state_dict"]
-    )
-
-    with open(os.path.join(args.output_dir, 'config.json'), 'w') as f:
-        configs = get_configs(args.llm_model_dir, args.wenet_model_dir)
-        print(configs)
-        json.dump(configs, f, indent=4)
-
-    config = AutoConfig.from_pretrained(f'{args.output_dir}/config.json')
-    print(f"Config: {config}")
-    model = AutoModel.from_config(config)
-    print(f"Model: {model}")
-    tokenizer = model.init_tokenizer()
-    print("Loading fireredasr-llm weights")
-    model.load_state_dict(state_dict, strict=False)
-    print("Saving fireredasr-llm weights to {}...".format(args.output_dir))
-    model.save_pretrained(args.output_dir)
-    tokenizer.save_pretrained(args.output_dir)
-
-
-if __name__ == "__main__":
-    main()
