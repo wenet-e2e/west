@@ -17,17 +17,17 @@ from west.dataset.extractor import Extractor
 @dataclass
 class DecodeArguments:
     result_path: str = field(default=None, metadata={"help": "Path to result"})
-    model_dir: str = field(default='')
+    model_config_or_dir: str = field(default='')
 
 
 def main():
     parser = HfArgumentParser((DataArguments, DecodeArguments))
     data_args, decode_args = parser.parse_args_into_dataclasses()
-    if os.path.isfile(decode_args.model_dir):
-        config = AutoConfig.from_pretrained(decode_args.model_dir)
+    if os.path.isfile(decode_args.model_config_or_dir):
+        config = AutoConfig.from_pretrained(decode_args.model_config_or_dir)
         model = AutoModel.from_config(config)
     else:
-        model = AutoModel.from_pretrained(decode_args.model_dir)
+        model = AutoModel.from_pretrained(decode_args.model_config_or_dir)
     tokenizer = model.init_tokenizer()
     extractor = Extractor.get_class(model.model_type)(tokenizer,
                                                       model.config,

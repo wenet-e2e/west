@@ -65,7 +65,7 @@ if [ $stage == "decode" ] || [ $stage == "all" ]; then
     cp conf/generation_config.json $mdir
     python west/bin/decode.py \
         --data_path $data/chinese_qa.jsonl \
-        --model_dir $mdir \
+        --model_config_or_dir $mdir \
         --result_path $mdir/result.jsonl
     python tools/get_qa_hyp_ref_text.py $data/chinese_qa.jsonl \
         $mdir/result.jsonl $mdir/result_hyp_ref.json

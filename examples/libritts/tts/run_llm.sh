@@ -61,7 +61,7 @@ if [ $stage == "decode" ] || [ $stage == "all" ]; then
     # llm inference
     python west/bin/decode.py \
         --data_path $test_jsonl \
-        --model_dir $PWD/$mdir \
+        --model_config_or_dir $PWD/$mdir \
         --result_path $adir/result.jsonl
 
     # prepare the codec.jsonl file for the tts flow inference
