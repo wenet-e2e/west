@@ -5,12 +5,12 @@ import os
 from typing import Optional
 
 import torch
-from transformers import AutoConfig, GenerationMixin, PreTrainedModel
+from transformers import (AutoConfig, AutoTokenizer, GenerationMixin,
+                          PreTrainedModel)
 from transformers.models.whisper.modeling_whisper import WhisperModel
 
 from .configuration_kimi_audio import KimiAudioConfig, WhisperVQConfig
 from .modeling_moonshot_kimia import MoonshotKimiaForCausalLM, WhisperVQEncoder
-from .tokenization_kimi_audio import KimiAudioTokenizer
 
 
 class KimiAudio(PreTrainedModel, GenerationMixin):
@@ -158,7 +158,7 @@ class KimiAudio(PreTrainedModel, GenerationMixin):
         self.llm.enable_input_require_grads()
 
     def init_tokenizer(self):
-        tokenizer = KimiAudioTokenizer.from_pretrained(
+        tokenizer = AutoTokenizer.from_pretrained(
             self.config.llm_model_name_or_path,
             trust_remote_code=True,
         )

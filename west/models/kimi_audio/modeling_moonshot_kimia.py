@@ -62,8 +62,7 @@ from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_outputs import (BaseModelOutputWithPast,
                                            CausalLMOutputWithPast)
-from transformers.models.qwen2.modeling_qwen2 import (KwargsForCausalLM,
-                                                      Qwen2DecoderLayer,
+from transformers.models.qwen2.modeling_qwen2 import (Qwen2DecoderLayer,
                                                       Qwen2PreTrainedModel,
                                                       Qwen2RMSNorm,
                                                       Qwen2RotaryEmbedding)
@@ -929,7 +928,7 @@ class MoonshotKimiaForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
         return_dict: Optional[bool] = None,
-        **kwargs: Unpack[KwargsForCausalLM],
+        **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
             logits_to_keep (`int` or `torch.Tensor`, *optional*):
