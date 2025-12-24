@@ -21,6 +21,7 @@ class ExtractorTouchASU(Extractor):
             self.model_config.wenet_model_name_or_path)
         self.ds_rate = (self.model_config.encoder_ds_rate *
                         self.model_config.encoder_projector_ds_rate)
+        self.default_prompt_text = 'Transcribe the Speech'
 
     def extract(self, item):
         """
@@ -57,7 +58,7 @@ class ExtractorTouchASU(Extractor):
                     'role': 'user',
                     'content': [{
                         'type': 'text',
-                        'text': 'Transcribe the Speech'
+                        'text': self.default_prompt_text
                     }, {
                         'type': 'audio',
                         'audio': item['wav']

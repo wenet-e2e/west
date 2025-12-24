@@ -1,0 +1,18 @@
+{
+  "encoder_ds_rate": 1,
+  "encoder_projector_ds_rate": 1,
+  "hidden_size": 3584,
+  "llm_model_name_or_path": "Qwen/Qwen3-0.6B",
+  "lora_config": null,
+  "max_speech_frames": 3000,
+  "min_speech_frames": 20,
+  "model_type": "fun_asr",
+  "projector_hidden_size": 3584,
+  "pretrained_checkpoint": "FunAudioLLM/Fun-ASR-Nano-2512/model.pt",
+  "torch_dtype": "bfloat16",
+  "transformers_version": "4.52.3",
+  "wenet_model_name_or_path": "sensevoice_small",
+  "max_new_tokens": 512,
+  "do_sample": false,
+  "num_beams": 3
+}
