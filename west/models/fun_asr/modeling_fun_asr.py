@@ -61,7 +61,7 @@ class ProjectorTransformer(nn.Module):
 
 class FunASR(TouchASU):
     """
-    Docstring for FunASR
+    FunASR: https://github.com/FunAudioLLM/Fun-ASR
     """
     model_type = "fun_asr"
     config_class = FunASRConfig
