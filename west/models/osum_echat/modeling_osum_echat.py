@@ -1,10 +1,10 @@
 # Copyright (c) 2025 Xuelong Geng(xlgeng@mail.nwpu.edu.cn)
 
+import logging
 from typing import Optional
 
 import torch
 import wenet
-from gxl_ai_utils.utils import utils_file
 from torch import nn
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           GenerationMixin, PreTrainedModel,
@@ -81,15 +81,15 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
             config.wenet_model_name_or_path)
         del self.encoder.decoder
         del self.encoder.ctc
-        utils_file.logging_info(
+        logging.info(
             f'self.encoder: {self.encoder}')
         llm_config = AutoConfig.from_pretrained(
             config.llm_model_name_or_path)
-        utils_file.logging_info(
+        logging.info(
             f'采用如下 LLM： {config.llm_model_name_or_path}'
         )
         if config.no_init_llm:
-            utils_file.logging_info(
+            logging.info(
                 'No init llm, only load llm structure'
             )
             self.llm = AutoModelForCausalLM.from_config(
@@ -109,14 +109,14 @@ class OSUMEChat(PreTrainedModel, GenerationMixin):
             use_fast=False,
             trust_remote_code=True)
         self.embed_tokens = self.llm.model.embed_tokens
-        utils_file.logging_info(
+        logging.info(
             f'self.llm: {self.llm}')
         self.projector = ProjectorTransformerWithCov1d(
             encoder_dim=self.encoder.encoder.
             output_size(),
             llm_dim=llm_config.hidden_size,
         )
-        utils_file.logging_info(
+        logging.info(
             f'self.projector: {self.projector}')
 
         self.speech_token_emded = torch.nn.Embedding(
