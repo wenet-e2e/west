@@ -45,6 +45,7 @@ void TouchASR::Reset() {
   all_encoder_outs_.clear();
   feature_pipeline_->Reset();
   speech_encoder_->Reset();
+  ctc_model_->Reset();
 }
 
 bool TouchASR::DecodeStreaming(std::string* result) {

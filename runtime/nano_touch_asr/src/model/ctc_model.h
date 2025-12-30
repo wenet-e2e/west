@@ -15,6 +15,10 @@ class CtcModel {
   explicit CtcModel(const std::string& model_path);
   void Forward(const std::vector<std::vector<float>>& encoder_outs,
                std::vector<int>* out_ids);
+  void Reset() {
+    cached_idx_.clear();
+    last_idx_ = 0;
+  }
 
  private:
   OnnxModel model_;
