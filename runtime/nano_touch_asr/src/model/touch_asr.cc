@@ -42,7 +42,7 @@ TouchASR::TouchASR(const TouchASRConfig& config)
 
 void TouchASR::Reset() {
   chunk_idx_ = 0;
-  all_encoder_outs_.clear();
+  all_speech_embd_.clear();
   feature_pipeline_->Reset();
   speech_encoder_->Reset();
   ctc_model_->Reset();
@@ -68,9 +68,11 @@ bool TouchASR::DecodeStreaming(std::string* result) {
   // Speech encoder forward
   std::vector<std::vector<float>> encoder_outs;
   speech_encoder_->Forward(chunk_feats, &encoder_outs);
-  // Accumulate encoder outputs for projector
-  for (const auto& out : encoder_outs) {
-    all_encoder_outs_.push_back(out);
+  // Accumulate speech embedding
+  std::vector<std::vector<float>> speech_embd;
+  projector_->Forward(encoder_outs, &speech_embd);
+  for (const auto& out : speech_embd) {
+    all_speech_embd_.push_back(out);
   }
   // CTC decoding
   std::vector<int> ctc_ids;
@@ -85,9 +87,7 @@ bool TouchASR::DecodeStreaming(std::string* result) {
 }
 
 void TouchASR::DecodeNonStreaming(std::string* result) {
-  CHECK(!all_encoder_outs_.empty()) << "No encoder outputs";
-  std::vector<std::vector<float>> projected_outs;
-  projector_->Forward(all_encoder_outs_, &projected_outs);
+  CHECK(!all_speech_embd_.empty()) << "No speech embedding";
   // // Read projected outputs from file test_data/speech_embd.txt
   // std::ifstream file("test_data/speech_embd.qwen2.txt");
   // std::string line;
@@ -101,9 +101,9 @@ void TouchASR::DecodeNonStreaming(std::string* result) {
   //   projected_outs.push_back(emb);
   // }
   // file.close();
-  LOG(INFO) << "Projected outputs: " << projected_outs.size() << " frames";
+  LOG(INFO) << "Speech embedding: " << all_speech_embd_.size() << " frames";
   result->clear();
-  llm_->Generate(projected_outs, result);
+  llm_->Generate(all_speech_embd_, result);
 }
 
 }  // namespace wenet

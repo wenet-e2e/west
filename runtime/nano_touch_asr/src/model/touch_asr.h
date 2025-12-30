@@ -56,7 +56,7 @@ class TouchASR {
   std::unique_ptr<LLM> llm_;
 
   int chunk_idx_ = 0;
-  std::vector<std::vector<float>> all_encoder_outs_;
+  std::vector<std::vector<float>> all_speech_embd_;
 };
 
 }  // namespace wenet
