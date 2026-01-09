@@ -1,50 +1,88 @@
 # Copyright (c) 2019 Shigeki Karita
 #               2020 Mobvoi Inc (Binbin Zhang)
+#               2024 Alibaba Inc (authors: Xiang Lyu)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import torch
+'''
+def subsequent_mask(
+        size: int,
+        device: torch.device = torch.device("cpu"),
+) -> torch.Tensor:
+    """Create mask for subsequent steps (size, size).
 
+    This mask is used only in decoder which works in an auto-regressive mode.
+    This means the current step could only do attention with its left steps.
 
-def make_pad_mask(lengths: torch.Tensor, max_len: int = 0) -> torch.Tensor:
-    """Make mask tensor containing indices of padded part.
+    In encoder, fully attention is used when streaming is not necessary and
+    the sequence is not long. In this  case, no attention mask is needed.
 
-    See description of make_non_pad_mask.
+    When streaming is need, chunk-based attention is used in encoder. See
+    subsequent_chunk_mask for the chunk-based attention mask.
 
     Args:
-        lengths (torch.Tensor): Batch of lengths (B,).
+        size (int): size of mask
+        str device (str): "cpu" or "cuda" or torch.Tensor.device
+        dtype (torch.device): result dtype
+
     Returns:
-        torch.Tensor: Mask tensor containing indices of padded part.
+        torch.Tensor: mask
 
     Examples:
-        >>> lengths = [5, 3, 2]
-        >>> make_pad_mask(lengths)
-        masks = [[0, 0, 0, 0 ,0],
-                 [0, 0, 0, 1, 1],
-                 [0, 0, 1, 1, 1]]
+        >>> subsequent_mask(3)
+        [[1, 0, 0],
+         [1, 1, 0],
+         [1, 1, 1]]
     """
-    batch_size = lengths.size(0)
-    max_len = max_len if max_len > 0 else lengths.max().item()
-    seq_range = torch.arange(0,
-                             max_len,
-                             dtype=torch.int64,
-                             device=lengths.device)
-    seq_range_expand = seq_range.unsqueeze(0).expand(batch_size, max_len)
-    seq_length_expand = lengths.unsqueeze(-1)
-    mask = seq_range_expand >= seq_length_expand
-    return mask
+    ret = torch.ones(size, size, device=device, dtype=torch.bool)
+    return torch.tril(ret)
+'''
 
 
-def non_causal_mask(lengths):
-    """
+def subsequent_mask(
+        size: int,
+        device: torch.device = torch.device("cpu"),
+) -> torch.Tensor:
+    """Create mask for subsequent steps (size, size).
+
+    This mask is used only in decoder which works in an auto-regressive mode.
+    This means the current step could only do attention with its left steps.
+
+    In encoder, fully attention is used when streaming is not necessary and
+    the sequence is not long. In this  case, no attention mask is needed.
+
+    When streaming is need, chunk-based attention is used in encoder. See
+    subsequent_chunk_mask for the chunk-based attention mask.
+
     Args:
-        lengths: (B,), such as [3, 5, 2]
+        size (int): size of mask
+        str device (str): "cpu" or "cuda" or torch.Tensor.device
+        dtype (torch.device): result dtype
+
     Returns:
-        attention_mask: (B, max_len, max_len), padding is False
+        torch.Tensor: mask
+
+    Examples:
+        >>> subsequent_mask(3)
+        [[1, 0, 0],
+         [1, 1, 0],
+         [1, 1, 1]]
     """
-    batch_size = lengths.size(0)
-    max_len = lengths.max().item()
-    mask = torch.zeros(batch_size, max_len, max_len, dtype=torch.bool)
-    for k, length in enumerate(lengths):
-        mask[k, :length, :length] = True
+    arange = torch.arange(size, device=device)
+    mask = arange.expand(size, size)
+    arange = arange.unsqueeze(-1)
+    mask = mask <= arange
     return mask
 
 
@@ -86,17 +124,6 @@ def subsequent_chunk_mask(
     return ret
 
 
-def mask_to_bias(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
-    assert mask.dtype == torch.bool
-    assert dtype in [torch.float32, torch.bfloat16, torch.float16]
-    mask = mask.to(dtype)
-    # attention mask bias
-    # NOTE(Mddct): torch.finfo jit issues
-    #     chunk_masks = (1.0 - chunk_masks) * torch.finfo(dtype).min
-    mask = (1.0 - mask) * -1.0e+10
-    return mask
-
-
 def add_optional_chunk_mask(xs: torch.Tensor,
                             masks: torch.Tensor,
                             use_dynamic_chunk: bool,
@@ -104,8 +131,7 @@ def add_optional_chunk_mask(xs: torch.Tensor,
                             decoding_chunk_size: int,
                             static_chunk_size: int,
                             num_decoding_left_chunks: int,
-                            enable_full_context: bool = True,
-                            max_chunk_size: int = 25):
+                            enable_full_context: bool = True):
     """ Apply optional mask for encoder.
 
     Args:
@@ -126,8 +152,8 @@ def add_optional_chunk_mask(xs: torch.Tensor,
             >=0: use num_decoding_left_chunks
             <0: use all left chunks
         enable_full_context (bool):
-            True: chunk size is [1, max_chunk_size] or full context(max_len)
-            False: chunk size ~ U[1, max_chunk_size]
+            True: chunk size is either [1, 25] or full context(max_len)
+            False: chunk size ~ U[1, 25]
 
     Returns:
         torch.Tensor: chunk mask of the input xs.
@@ -142,13 +168,15 @@ def add_optional_chunk_mask(xs: torch.Tensor,
             chunk_size = decoding_chunk_size
             num_left_chunks = num_decoding_left_chunks
         else:
-            # chunk_size maybe [1, max_chunk_size] or max_len if full context.
+            # chunk size is either [1, 25] or full context(max_len).
+            # Since we use 4 times subsampling and allow up to 1s(100 frames)
+            # delay, the maximum frame is 100 / 4 = 25.
             chunk_size = torch.randint(1, max_len, (1, )).item()
             num_left_chunks = -1
             if chunk_size > max_len // 2 and enable_full_context:
                 chunk_size = max_len
             else:
-                chunk_size = chunk_size % max_chunk_size + 1
+                chunk_size = chunk_size % 25 + 1
                 if use_dynamic_left_chunk:
                     max_left_chunks = (max_len - 1) // chunk_size
                     num_left_chunks = torch.randint(0, max_left_chunks,
@@ -169,10 +197,31 @@ def add_optional_chunk_mask(xs: torch.Tensor,
         chunk_masks = masks
     return chunk_masks
 
-# print(non_causal_mask(torch.tensor([2, 3, 4], dtype=torch.long)))
 
-def lengths_to_padding_mask(lens):
-    bsz, max_lens = lens.size(0), torch.max(lens).item()
-    mask = torch.arange(max_lens).to(lens.device).view(1, max_lens)
-    mask = mask.expand(bsz, -1) >= lens.view(bsz, 1).expand(-1, max_lens)
+def make_pad_mask(lengths: torch.Tensor, max_len: int = 0) -> torch.Tensor:
+    """Make mask tensor containing indices of padded part.
+
+    See description of make_non_pad_mask.
+
+    Args:
+        lengths (torch.Tensor): Batch of lengths (B,).
+    Returns:
+        torch.Tensor: Mask tensor containing indices of padded part.
+
+    Examples:
+        >>> lengths = [5, 3, 2]
+        >>> make_pad_mask(lengths)
+        masks = [[0, 0, 0, 0 ,0],
+                 [0, 0, 0, 1, 1],
+                 [0, 0, 1, 1, 1]]
+    """
+    batch_size = lengths.size(0)
+    max_len = max_len if max_len > 0 else lengths.max().item()
+    seq_range = torch.arange(0,
+                             max_len,
+                             dtype=torch.int64,
+                             device=lengths.device)
+    seq_range_expand = seq_range.unsqueeze(0).expand(batch_size, max_len)
+    seq_length_expand = lengths.unsqueeze(-1)
+    mask = seq_range_expand >= seq_length_expand
     return mask
