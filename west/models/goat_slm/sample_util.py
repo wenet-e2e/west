@@ -7,9 +7,14 @@ from typing import Optional, Tuple, Union, List
 import torch
 import numpy as np
 
+
 def multinomial_sample_one_no_sync_ori(probs_sort, index=None):
-    q = torch.empty_like(probs_sort, dtype=probs_sort.dtype, device=probs_sort.device, requires_grad=False).exponential_(1)
-    return torch.argmax(probs_sort / q, dim=-1, keepdim=True).to(dtype=torch.int)
+    q = torch.empty_like(probs_sort,
+                         dtype=probs_sort.dtype,
+                         device=probs_sort.device,
+                         requires_grad=False).exponential_(1)
+    return torch.argmax(probs_sort / q, dim=-1,
+                        keepdim=True).to(dtype=torch.int)
 
 
 def logits_to_probs(
@@ -25,21 +30,19 @@ def logits_to_probs(
     if previous_tokens is not None and repetition_penalty != 1.0:
         previous_tokens = previous_tokens.long()
         score = torch.gather(logits, dim=1, index=previous_tokens)
-        score = torch.where(
-            score < 0, score * repetition_penalty, score / repetition_penalty
-        )
+        score = torch.where(score < 0, score * repetition_penalty,
+                            score / repetition_penalty)
         logits = logits.scatter(dim=1, index=previous_tokens, src=score)
 
     if top_p is not None and top_p < 1.0:
         sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-        cum_probs = torch.cumsum(
-            torch.nn.functional.softmax(sorted_logits, dim=-1), dim=-1
-        )
+        cum_probs = torch.cumsum(torch.nn.functional.softmax(sorted_logits,
+                                                             dim=-1),
+                                 dim=-1)
         sorted_indices_to_remove = cum_probs > top_p
         sorted_indices_to_remove[0] = False  # keep at least one option
         indices_to_remove = sorted_indices_to_remove.scatter(
-            dim=0, index=sorted_indices, src=sorted_indices_to_remove
-        )
+            dim=0, index=sorted_indices, src=sorted_indices_to_remove)
         logits = logits.masked_fill(indices_to_remove, -float("Inf"))
 
     logits = logits / max(temperature, 1e-5)
@@ -59,20 +62,23 @@ def sample(
     index=None,
     **sampling_kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    probs = logits_to_probs(
-        logits=logits, previous_tokens=previous_tokens, **sampling_kwargs
-    )
+    probs = logits_to_probs(logits=logits,
+                            previous_tokens=previous_tokens,
+                            **sampling_kwargs)
     idx_next = multinomial_sample_one_no_sync_ori(probs, index=index)
     return idx_next, probs
 
 
-
-
-
 # Repetition Aware Sampling in VALL-E 2
-def ras_sampling(weighted_scores, decoded_tokens, top_p=0.8, top_k=25, win_size=10, tau_r=0.1):
+def ras_sampling(weighted_scores,
+                 decoded_tokens,
+                 top_p=0.8,
+                 top_k=25,
+                 win_size=10,
+                 tau_r=0.1):
     top_ids = nucleus_sampling(weighted_scores, top_p=top_p, top_k=top_k)
-    rep_num = (torch.tensor(decoded_tokens[-win_size:]).to(weighted_scores.device) == top_ids).sum().item()
+    rep_num = (torch.tensor(decoded_tokens[-win_size:]).to(
+        weighted_scores.device) == top_ids).sum().item()
     if rep_num >= win_size * tau_r:
         top_ids = random_sampling(weighted_scores)
     return top_ids
@@ -81,7 +87,8 @@ def ras_sampling(weighted_scores, decoded_tokens, top_p=0.8, top_k=25, win_size=
 def nucleus_sampling(weighted_scores, top_p=0.8, top_k=25):
     prob, indices = [], []
     cum_prob = 0.0
-    sorted_value, sorted_idx = weighted_scores.softmax(dim=0).sort(descending=True, stable=True)
+    sorted_value, sorted_idx = weighted_scores.softmax(dim=0).sort(
+        descending=True, stable=True)
     for i in range(len(sorted_idx)):
         # sampling both top-p and numbers.
         if cum_prob < top_p and len(prob) < top_k:

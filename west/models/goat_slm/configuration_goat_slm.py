@@ -10,25 +10,28 @@ from .modeling_telechat3 import Telechat3Config
 
 logger = logging.get_logger(__name__)
 
+
 class GOATSLMConfig(PretrainedConfig):
-    def __init__(
-        self,
-        whisper_config=None,
-        llm_config=None,
-        adapter_config=None,
-        conv_kernel_sizes="5,5,5",
-        adapter_inner_dim=512,
-        **kwargs
-    ):
+
+    def __init__(self,
+                 whisper_config=None,
+                 llm_config=None,
+                 adapter_config=None,
+                 conv_kernel_sizes="5,5,5",
+                 adapter_inner_dim=512,
+                 **kwargs):
         super().__init__(**kwargs)
 
         if whisper_config is None:
             whisper_config = {}
-            logger.info("whisper config is None. Initializing the WhisperConfig with default values")
+            logger.info(
+                "whisper config is None. Initializing the WhisperConfig with default values"
+            )
 
         if llm_config is None:
             llm_config = {}
-            logger.info("llm config is None. Initializing the llm with default values")
+            logger.info(
+                "llm config is None. Initializing the llm with default values")
 
         if adapter_config is None:
             adapter_config = {}

@@ -7,9 +7,11 @@ import os
 import sys
 import uuid
 import torchaudio
-sys.path.insert(0, '../../west')
-sys.path.insert(0, '../west/models/goat_slm/CosyVoice')
-sys.path.insert(0, '../west/models/goat_slm/CosyVoice/third_party/Matcha-TTS')
+
+sys.path.insert(0, '../../../west')
+sys.path.insert(0, '../../west/models/goat_slm/CosyVoice')
+sys.path.insert(0,
+                '../../west/models/goat_slm/CosyVoice/third_party/Matcha-TTS')
 import argparse
 import json
 from tqdm import tqdm
@@ -22,6 +24,7 @@ from transformers import GenerationConfig
 from west.models.goat_slm import GOATSLMModel
 from west.models.goat_slm import CosyVoice
 
+
 def load_wav(wav, target_sr, device=None):
     speech, sample_rate = torchaudio.load(wav)
     speech = speech.mean(dim=0, keepdim=True)
@@ -29,7 +32,8 @@ def load_wav(wav, target_sr, device=None):
         assert device is not None, f'device is None!!!'
         speech = speech.to(device=device)
         # assert sample_rate > target_sr, 'wav sample rate {} must be greater than {}'.format(sample_rate, target_sr)
-        speech = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sr).cuda()(speech)
+        speech = torchaudio.transforms.Resample(
+            orig_freq=sample_rate, new_freq=target_sr).cuda()(speech)
     return speech[:, :int(target_sr * 30)]
 
 
@@ -44,14 +48,16 @@ def process_dataset(batch, tokenizer, type='qwen', enable_thinking=False):
         suffix = "<|im_end|>\n<|im_start|>assistant\n"
         if enable_thinking == False:
             suffix += '<think>\n\n</think>\n\n'
-        response = batch["text_a"] + "<|im_end|>" if 'text_a' in batch else "文件中没有提供合适的回复内容。<|im_end|>"
+        response = batch[
+            "text_a"] + "<|im_end|>" if 'text_a' in batch else "文件中没有提供合适的回复内容。<|im_end|>"
     else:
         text_llm_prefix = f"<_system>{text_llm_system_prompt}\n<_user>"
         speech_llm_prefix = f"<_system>{speech_llm_system_prompt}\n<_user>"
         suffix = "<_bot>"
         # if enable_thinking == False:
         #     suffix += '<think>\n\n</think>\n'
-        response = batch["text_a"] + "<_end>" if 'text_a' in batch else "文件中没有提供合适的回复内容。<_end>"
+        response = batch[
+            "text_a"] + "<_end>" if 'text_a' in batch else "文件中没有提供合适的回复内容。<_end>"
 
     text_llm_input_ids = tokenizer.encode(text_llm_prefix)
     text_llm_attention_mask = [1] * len(text_llm_input_ids)
@@ -95,31 +101,39 @@ def process_dataset(batch, tokenizer, type='qwen', enable_thinking=False):
 
 
 def init_cosyvoice(model_path):
-    cosyvoice = CosyVoice(model_path)
+    cosyvoice = CosyVoice(model_path, load_jit=False)
     return cosyvoice
+
 
 reference_audio = './data/goat_slm_reference_speech.wav'
 reference_speech_16k = load_wav(reference_audio, 16000, 'cuda')
 reference_speech_22050 = load_wav(reference_audio, 22050, 'cuda')
 
+
 def unit_to_wav(units, cosyvoice):
-    flow_prompt_speech_token, reference_speech_token_len = cosyvoice.frontend._extract_speech_token(reference_speech_16k)  # [bs, t2]
-    prompt_speech_feat, reference_speech_feat_len = cosyvoice.frontend._extract_speech_feat(reference_speech_22050)  # [bs, t1, 80]
+    flow_prompt_speech_token, reference_speech_token_len = cosyvoice.frontend._extract_speech_token(
+        reference_speech_16k)  # [bs, t2]
+    prompt_speech_feat, reference_speech_feat_len = cosyvoice.frontend._extract_speech_feat(
+        reference_speech_22050)  # [bs, t1, 80]
     embedding = cosyvoice.frontend._extract_spk_embedding(reference_speech_16k)
     tts_speech = []
     for unit in units:
         tts_speech_token = torch.from_numpy(np.asarray(unit)).unsqueeze(0)
         this_uuid = str(uuid.uuid1())
         with cosyvoice.model.lock:
-            cosyvoice.model.tts_speech_token_dict[this_uuid], cosyvoice.model.llm_end_dict[this_uuid] = [], False
-            cosyvoice.model.mel_overlap_dict[this_uuid], cosyvoice.model.hift_cache_dict[this_uuid] = None, None
-        this_tts_speech = cosyvoice.model.token2wav(token=tts_speech_token,
-                                         prompt_token=flow_prompt_speech_token,
-                                         prompt_feat=prompt_speech_feat,
-                                         embedding=embedding,
-                                         uuid=this_uuid,
-                                         finalize=True,
-                                         speed=1.0)
+            cosyvoice.model.tts_speech_token_dict[
+                this_uuid], cosyvoice.model.llm_end_dict[this_uuid] = [], False
+            cosyvoice.model.mel_overlap_dict[
+                this_uuid], cosyvoice.model.hift_cache_dict[
+                    this_uuid] = None, None
+        this_tts_speech = cosyvoice.model.token2wav(
+            token=tts_speech_token,
+            prompt_token=flow_prompt_speech_token,
+            prompt_feat=prompt_speech_feat,
+            embedding=embedding,
+            uuid=this_uuid,
+            finalize=True,
+            speed=1.0)
         tts_speech.append(this_tts_speech.cpu())
     tts_speech = torch.cat(tts_speech, dim=-1)
     return tts_speech
@@ -127,50 +141,54 @@ def unit_to_wav(units, cosyvoice):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--input_file", type=str, default=None,
-        help="Path to the input file", required=True
-    )
-    parser.add_argument(
-        "--enable_thinking",
-        action="store_true",
-        help="Enable thinking mode"
-    )
-    parser.add_argument(
-        "--output_file", type=str, default=None,
-        help="Path to the output file", required=True
-    )
-    parser.add_argument(
-        "--slm_model_path", type=str, default=None,
-        help="Path to the slm model", required=True
-    )
+    parser.add_argument("--input_file",
+                        type=str,
+                        default=None,
+                        help="Path to the input file",
+                        required=True)
+    parser.add_argument("--enable_thinking",
+                        action="store_true",
+                        help="Enable thinking mode")
+    parser.add_argument("--output_file",
+                        type=str,
+                        default=None,
+                        help="Path to the output file",
+                        required=True)
+    parser.add_argument("--slm_model_path",
+                        type=str,
+                        default=None,
+                        help="Path to the slm model",
+                        required=True)
     ### args for generation
+    parser.add_argument("--max_new_tokens",
+                        type=int,
+                        default=2048,
+                        help="max new tokens for generation")
+    parser.add_argument("--min_new_tokens",
+                        type=int,
+                        default=3,
+                        help="min new tokens for generation")
     parser.add_argument(
-        "--max_new_tokens", type=int, default=2048,
-        help="max new tokens for generation"
+        "--do_sample",
+        action="store_true",
+        help=
+        "whether do sample. For ST task, we will use greedy search to ensure stable output"
     )
-    parser.add_argument(
-        "--min_new_tokens", type=int, default=3,
-        help="min new tokens for generation"
-    )
-    parser.add_argument(
-        "--do_sample", action="store_true",
-        help="whether do sample. For ST task, we will use greedy search to ensure stable output"
-    )
-    parser.add_argument(
-        "--temperature", type=float, default=0.9,
-        help="temperature for generation"
-    )
-    parser.add_argument(
-        "--top_p", type=float, default=0.75,
-        help="top_p for generation"
-    )
-    parser.add_argument(
-        "--top_k", type=int, default=20,
-        help="top_k for generation"
-    )
+    parser.add_argument("--temperature",
+                        type=float,
+                        default=0.9,
+                        help="temperature for generation")
+    parser.add_argument("--top_p",
+                        type=float,
+                        default=0.75,
+                        help="top_p for generation")
+    parser.add_argument("--top_k",
+                        type=int,
+                        default=20,
+                        help="top_k for generation")
     args = parser.parse_args()
     return args
+
 
 def main():
     args = get_args()
@@ -183,7 +201,11 @@ def main():
     is_teacher_forcing = False
     # *******************************************************************************************
 
-    Y_model, loading_info_speech = GOATSLMModel.from_pretrained(args.slm_model_path, torch_dtype=torch.bfloat16, _fast_init=True, output_loading_info=True)
+    Y_model, loading_info_speech = GOATSLMModel.from_pretrained(
+        args.slm_model_path,
+        torch_dtype=torch.bfloat16,
+        _fast_init=True,
+        output_loading_info=True)
     Y_model = Y_model.cuda()
     device = Y_model.device
     Y_model.eval()
@@ -192,8 +214,10 @@ def main():
         "GOAT-SLM1-7B或者GOAT-SLM2-1.8B，enable_thinking必须为True。" \
         "注意：GOAT-SLM1-7B不支持think，enable_thinking必须为True便于代码层面统一; GOAT-SLM2-1.8B只支持think模式。"
 
-    fbank_extractor = WhisperFeatureExtractor.from_pretrained(f'{args.slm_model_path}/whisper-small')
-    tokenizer = AutoTokenizer.from_pretrained(args.slm_model_path, trust_remote_code=True)
+    fbank_extractor = WhisperFeatureExtractor.from_pretrained(
+        f'{args.slm_model_path}/whisper-small')
+    tokenizer = AutoTokenizer.from_pretrained(args.slm_model_path,
+                                              trust_remote_code=True)
 
     # 初始化cosyvoice
     cosyvoice = init_cosyvoice(f"{args.slm_model_path}/CosyVoice-300M-SFT")
@@ -236,37 +260,52 @@ def main():
 
     with open(f"{args.output_file}/output.json", "w") as fout:
         for index, data_ in enumerate(dataset):
-            data = process_dataset(data_, tokenizer, type=Y_model.llm_config.model_type.lower(), enable_thinking=enable_thinking)
+            data = process_dataset(data_,
+                                   tokenizer,
+                                   type=Y_model.llm_config.model_type.lower(),
+                                   enable_thinking=enable_thinking)
             audio = data.get("speech_q", None)
             speech_values, speech_attention_mask = None, None
             if audio is not None:
-                speech = load_wav(audio, target_sr=fbank_extractor.sampling_rate)
+                speech = load_wav(audio,
+                                  target_sr=fbank_extractor.sampling_rate)
                 speech_inputs = fbank_extractor(
                     speech.squeeze(0),
                     sampling_rate=fbank_extractor.sampling_rate,
                     return_attention_mask=True,
                     return_tensors='pt'  # "pt", 'np'
                 )
-                speech_values = speech_inputs.input_features.to(device=device, dtype=torch.bfloat16)
+                speech_values = speech_inputs.input_features.to(
+                    device=device, dtype=torch.bfloat16)
                 speech_attention_mask = speech_inputs.attention_mask.to(device)
 
             text_tokens, speech_units = Y_model.generate_custom(
-                input_ids=torch.tensor(data['input_ids'], dtype=torch.int, device=device).unsqueeze(0),
-                query_ids=torch.tensor(data['query_ids'], dtype=torch.int, device=device).unsqueeze(0),
-                suffix_input_ids=torch.tensor(data['suffix_input_ids'], dtype=torch.int, device=device).unsqueeze(0),
+                input_ids=torch.tensor(data['input_ids'],
+                                       dtype=torch.int,
+                                       device=device).unsqueeze(0),
+                query_ids=torch.tensor(data['query_ids'],
+                                       dtype=torch.int,
+                                       device=device).unsqueeze(0),
+                suffix_input_ids=torch.tensor(data['suffix_input_ids'],
+                                              dtype=torch.int,
+                                              device=device).unsqueeze(0),
                 speech_values=speech_values,
                 speech_attention_mask=speech_attention_mask,
                 generation_config=generation_config,
-                streamer=None, #streamer,
-                text_label=torch.tensor(data['answer_input_ids'], dtype=torch.int, device=device),
+                streamer=None,  #streamer,
+                text_label=torch.tensor(data['answer_input_ids'],
+                                        dtype=torch.int,
+                                        device=device),
                 is_teacher_forcing=is_teacher_forcing,
-                speech_llm_input_ids=torch.tensor(data['speech_llm_input_ids'], dtype=torch.int, device=device).unsqueeze(0),
+                speech_llm_input_ids=torch.tensor(data['speech_llm_input_ids'],
+                                                  dtype=torch.int,
+                                                  device=device).unsqueeze(0),
                 max_speech_unit_length=max_speech_unit_length,
                 is_speech_generate_run=is_speech_generate_run,
-                enable_thinking=enable_thinking
-            )
+                enable_thinking=enable_thinking)
 
-            response = tokenizer.decode(text_tokens.squeeze(0), skip_special_tokens=skip_special_tokens)
+            response = tokenizer.decode(text_tokens.squeeze(0),
+                                        skip_special_tokens=skip_special_tokens)
             response = re.sub(r'!{2,}', '', REGEX_HEAD.sub("", response))
             print(f"index: {index} |||  response text:", response)
 
@@ -291,15 +330,13 @@ def main():
                     "response": response,
                     'think': think,
                 },
-                ensure_ascii=False
-            )
+                ensure_ascii=False)
             fout.write(json_string + "\n")
             fout.flush()
 
 
 if __name__ == "__main__":
     main()
-
 '''
 --input_file ./data/goat_slm_test.json
 --output_file xxx/result/

@@ -37,11 +37,11 @@ class Conv1dSubsampler(nn.Module):
     """
 
     def __init__(
-        self,
-        in_channels: int,
-        mid_channels: int,
-        out_channels: int,
-        kernel_sizes: List[int] = (3, 3),
+            self,
+            in_channels: int,
+            mid_channels: int,
+            out_channels: int,
+            kernel_sizes: List[int] = (3, 3),
     ):
         super(Conv1dSubsampler, self).__init__()
         self.n_layers = len(kernel_sizes)
@@ -52,9 +52,7 @@ class Conv1dSubsampler(nn.Module):
                 k,
                 stride=2,
                 padding=k // 2,
-            )
-            for i, k in enumerate(kernel_sizes)
-        )
+            ) for i, k in enumerate(kernel_sizes))
 
     def get_out_seq_lens_tensor(self, in_seq_lens_tensor):
         out = in_seq_lens_tensor.clone()
@@ -104,7 +102,8 @@ class GOATSLMModel(PreTrainedModel):
             self.llm_model.speech_generator = Qwen3ForCausalLM(self.llm_config)
         elif model_type == "telechat3":
             self.llm_model = Telechat3ForCausalLM(self.llm_config)
-            self.llm_model.speech_generator = Telechat3ForCausalLM(self.llm_config)
+            self.llm_model.speech_generator = Telechat3ForCausalLM(
+                self.llm_config)
         else:
             raise ValueError(f"Unknown model type: {model_type}")
 
@@ -126,17 +125,26 @@ class GOATSLMModel(PreTrainedModel):
         # init speech generator
         self.initialize_speech_generator(self.llm_config)
         self.num_tok_per_group = 4
-        self.llm_model.add_module('emb_unit', nn.Embedding(self.llm_config.unit_vocab_size + 1, self.llm_config.hidden_size))
-        self.llm_model.add_module('head_unit', nn.ModuleList(
-            [nn.Linear(self.llm_config.hidden_size // 2 if model_type == "telechat3" else self.llm_config.hidden_size, self.llm_config.unit_vocab_size + 1, bias=False) for _ in range(self.num_tok_per_group)]
-        ))
+        self.llm_model.add_module(
+            'emb_unit',
+            nn.Embedding(self.llm_config.unit_vocab_size + 1,
+                         self.llm_config.hidden_size))
+        self.llm_model.add_module(
+            'head_unit',
+            nn.ModuleList([
+                nn.Linear(self.llm_config.hidden_size // 2 if model_type
+                          == "telechat3" else self.llm_config.hidden_size,
+                          self.llm_config.unit_vocab_size + 1,
+                          bias=False) for _ in range(self.num_tok_per_group)
+            ]))
 
         self.llm_model.freeze_layer = self.llm_config.freeze_layer
 
     def initialize_speech_generator(self, model_args):
-        self.llm_config.unit_vocab_size = getattr(model_args, 'unit_vocab_size', 4097)
-        self.llm_config.num_tok_per_group = getattr(model_args, 'num_tok_per_group', 4)
-
+        self.llm_config.unit_vocab_size = getattr(model_args, 'unit_vocab_size',
+                                                  4097)
+        self.llm_config.num_tok_per_group = getattr(model_args,
+                                                    'num_tok_per_group', 4)
 
     def get_speech_features(self, speech_values, speech_attention_mask):
         w2v_args = {
@@ -144,39 +152,48 @@ class GOATSLMModel(PreTrainedModel):
             "attention_mask": speech_attention_mask,
         }
         output = self.whisper_model(**w2v_args)
-        speech_embeds = output.last_hidden_state # B x T x C
+        speech_embeds = output.last_hidden_state  # B x T x C
         speech_lengths = output.output_lengths
 
-        speech_embeds, speech_lengths = self.subsampler(speech_embeds, speech_lengths)
-        speech_embeds = speech_embeds.transpose(0,1) # T x B x C -> B x T x C
+        speech_embeds, speech_lengths = self.subsampler(speech_embeds,
+                                                        speech_lengths)
+        speech_embeds = speech_embeds.transpose(0, 1)  # T x B x C -> B x T x C
         speech_padding_mask = lengths_to_padding_mask(speech_lengths)
         speech_atts = ~speech_padding_mask
 
-        speech_embeds = self.adapter(
-                inputs_embeds=speech_embeds,
-                attention_mask=speech_atts,
-                return_dict=True
-        ).last_hidden_state
+        speech_embeds = self.adapter(inputs_embeds=speech_embeds,
+                                     attention_mask=speech_atts,
+                                     return_dict=True).last_hidden_state
         speech_embeds = self.speech_ln(speech_embeds)
 
         return speech_embeds, speech_atts
 
-
-    def prepare_inputs_labels_for_speech_and_text(self, input_ids, query_ids, suffix_input_ids, speech_values,
-                                                  speech_attention_mask, speech_llm_input_ids=None):
+    def prepare_inputs_labels_for_speech_and_text(self,
+                                                  input_ids,
+                                                  query_ids,
+                                                  suffix_input_ids,
+                                                  speech_values,
+                                                  speech_attention_mask,
+                                                  speech_llm_input_ids=None):
         inputs_embeds, attention_mask = [], []
 
         prefix_embeds = self.llm_model.get_input_embeddings()(input_ids)
-        prefix_attns = torch.ones(prefix_embeds.size(0), prefix_embeds.size(1), dtype=torch.long).to(prefix_embeds.device)
+        prefix_attns = torch.ones(prefix_embeds.size(0),
+                                  prefix_embeds.size(1),
+                                  dtype=torch.long).to(prefix_embeds.device)
 
         suffix_embeds = self.llm_model.get_input_embeddings()(suffix_input_ids)
-        suffix_attns = torch.ones(suffix_embeds.size(0), suffix_embeds.size(1), dtype=torch.long).to(suffix_embeds.device)
+        suffix_attns = torch.ones(suffix_embeds.size(0),
+                                  suffix_embeds.size(1),
+                                  dtype=torch.long).to(suffix_embeds.device)
 
         inputs_embeds.append(prefix_embeds)
         attention_mask.append(prefix_attns)
 
         query_embeds = self.llm_model.get_input_embeddings()(query_ids)
-        query_attns = torch.ones(query_embeds.size(0), query_embeds.size(1), dtype=torch.long).to(query_embeds.device)
+        query_attns = torch.ones(query_embeds.size(0),
+                                 query_embeds.size(1),
+                                 dtype=torch.long).to(query_embeds.device)
         inputs_embeds.append(query_embeds)
         attention_mask.append(query_attns)
 
@@ -184,7 +201,10 @@ class GOATSLMModel(PreTrainedModel):
             if isinstance(speech_values, np.ndarray):
                 input_names = ['feature', 'feature_lens']
                 ort_inputs = {}
-                input_numpy = [speech_values, np.array([np.sum(speech_attention_mask[0])], dtype=np.int64)]
+                input_numpy = [
+                    speech_values,
+                    np.array([np.sum(speech_attention_mask[0])], dtype=np.int64)
+                ]
                 for idx, name in enumerate(input_names):
                     ort_inputs[name] = input_numpy[idx]
                 start_time = time.time()
@@ -192,11 +212,14 @@ class GOATSLMModel(PreTrainedModel):
                 end_time = time.time()
                 print("onnx runtime:", end_time - start_time)
                 speech_embeds, speech_attention_mask = ort_outs
-                speech_embeds = torch.from_numpy(speech_embeds).to(device=prefix_embeds.device, dtype=prefix_embeds.dtype)
-                speech_attention_mask = torch.from_numpy(speech_attention_mask).to(device=prefix_embeds.device,
-                                                                                   dtype=prefix_embeds.dtype)
+                speech_embeds = torch.from_numpy(speech_embeds).to(
+                    device=prefix_embeds.device, dtype=prefix_embeds.dtype)
+                speech_attention_mask = torch.from_numpy(
+                    speech_attention_mask).to(device=prefix_embeds.device,
+                                              dtype=prefix_embeds.dtype)
             else:
-                speech_embeds, speech_attention_mask = self.get_speech_features(speech_values, speech_attention_mask)
+                speech_embeds, speech_attention_mask = self.get_speech_features(
+                    speech_values, speech_attention_mask)
 
             inputs_embeds.append(speech_embeds)
             attention_mask.append(speech_attention_mask)
@@ -213,73 +236,72 @@ class GOATSLMModel(PreTrainedModel):
         attention_mask = torch.cat(attention_mask, dim=1)
 
         if speech_llm_input_ids is not None:
-            speech_llm_prefix_embeds = self.llm_model.get_input_embeddings()(speech_llm_input_ids)
-            speech_llm_prefix_attention_mask = torch.ones(speech_llm_prefix_embeds.size(0), speech_llm_prefix_embeds.size(1), dtype=torch.long).to(speech_llm_prefix_embeds.device)
+            speech_llm_prefix_embeds = self.llm_model.get_input_embeddings()(
+                speech_llm_input_ids)
+            speech_llm_prefix_attention_mask = torch.ones(
+                speech_llm_prefix_embeds.size(0),
+                speech_llm_prefix_embeds.size(1),
+                dtype=torch.long).to(speech_llm_prefix_embeds.device)
             text_llm_prefix_len = prefix_embeds.size(1)
         else:
             speech_llm_prefix_attention_mask = speech_llm_prefix_embeds = text_llm_prefix_len = None
 
         return inputs_embeds, attention_mask, speech_llm_prefix_embeds, speech_llm_prefix_attention_mask, text_llm_prefix_len
 
-
     @torch.no_grad()
-    def generate_custom(
-            self,
-            input_ids,
-            suffix_input_ids,
-            query_ids=None,
-            speech_values=None,
-            speech_attention_mask=None,
-            generation_config=None,
-            streamer: Optional["BaseStreamer"] = None,
-            text_label=None,
-            is_teacher_forcing=False,
-            prompt_unit=None,
-            speech_llm_input_ids=None,
-            max_speech_unit_length=50*35,
-            is_speech_generate_run=True,
-            enable_thinking=False
-    ):
+    def generate_custom(self,
+                        input_ids,
+                        suffix_input_ids,
+                        query_ids=None,
+                        speech_values=None,
+                        speech_attention_mask=None,
+                        generation_config=None,
+                        streamer: Optional["BaseStreamer"] = None,
+                        text_label=None,
+                        is_teacher_forcing=False,
+                        prompt_unit=None,
+                        speech_llm_input_ids=None,
+                        max_speech_unit_length=50 * 35,
+                        is_speech_generate_run=True,
+                        enable_thinking=False):
         assert (is_teacher_forcing == False) or (
-                    is_teacher_forcing and text_label is not None), f'teacher forcing is True, but text label is None!!'
+            is_teacher_forcing and text_label
+            is not None), f'teacher forcing is True, but text label is None!!'
 
         inputs_embeds, attention_mask, speech_llm_prefix_embeds, speech_llm_prefix_attention_mask, text_llm_prefix_len = self.prepare_inputs_labels_for_speech_and_text(
-            input_ids, query_ids, suffix_input_ids, speech_values, speech_attention_mask, speech_llm_input_ids
-        )
+            input_ids, query_ids, suffix_input_ids, speech_values,
+            speech_attention_mask, speech_llm_input_ids)
 
-        custom_params = {"speech_llm_prefix_embeds": speech_llm_prefix_embeds,
-            "speech_llm_prefix_attention_mask": speech_llm_prefix_attention_mask,
+        custom_params = {
+            "speech_llm_prefix_embeds": speech_llm_prefix_embeds,
+            "speech_llm_prefix_attention_mask":
+            speech_llm_prefix_attention_mask,
             "text_llm_prefix_len": text_llm_prefix_len,
             "text_label": text_label,
             "is_teacher_forcing": is_teacher_forcing,
             "prompt_unit": prompt_unit,
             'max_speech_unit_length': max_speech_unit_length,
             'is_speech_generate_run': is_speech_generate_run,
-            'enable_thinking': enable_thinking}
+            'enable_thinking': enable_thinking
+        }
 
-        outputs = self.llm_model.generate(
-            inputs_embeds=inputs_embeds,
-            streamer=streamer,
-            generation_config=generation_config,
-            attention_mask=attention_mask,
-            custom_params=custom_params
-        )
+        outputs = self.llm_model.generate(inputs_embeds=inputs_embeds,
+                                          streamer=streamer,
+                                          generation_config=generation_config,
+                                          attention_mask=attention_mask,
+                                          custom_params=custom_params)
 
         return outputs.sequences, outputs.speech_units
 
-
-
     @torch.no_grad()
-    def generate_custom_for_multi_turn(
-            self,
-            history,
-            tokenizer,
-            generation_config=None,
-            max_speech_unit_length=30*50,
-            is_speech_generate_run=True,
-            enable_thinking=False,
-            device='cuda'
-    ):
+    def generate_custom_for_multi_turn(self,
+                                       history,
+                                       tokenizer,
+                                       generation_config=None,
+                                       max_speech_unit_length=30 * 50,
+                                       is_speech_generate_run=True,
+                                       enable_thinking=False,
+                                       device='cuda'):
         inputs_embeds = []
 
         multi_turn_indices = []
@@ -293,32 +315,45 @@ class GOATSLMModel(PreTrainedModel):
                     if content_item['type'] == 'text':
                         input_ids = tokenizer.encode(content_item['text'])
                         text_llm_prefix_len = len(input_ids)
-                        input_ids = torch.tensor(input_ids, dtype=torch.int, device=device).unsqueeze(0)
-                        embeds = self.llm_model.get_input_embeddings()(input_ids)
+                        input_ids = torch.tensor(input_ids,
+                                                 dtype=torch.int,
+                                                 device=device).unsqueeze(0)
+                        embeds = self.llm_model.get_input_embeddings()(
+                            input_ids)
                         inputs_embeds.append(embeds)
                         print(f"{content_item['text']}")
             elif item['role'] == 'speech_system':
                 for content_item in item['content']:
                     if content_item['type'] == 'text':
                         input_ids = tokenizer.encode(content_item['text'])
-                        input_ids = torch.tensor(input_ids, dtype=torch.int, device=device).unsqueeze(0)
-                        speech_llm_prefix_embeds = self.llm_model.get_input_embeddings()(input_ids)
-                        speech_llm_prefix_attention_mask = torch.ones(speech_llm_prefix_embeds.size(0),
-                                                                      speech_llm_prefix_embeds.size(1),
-                                                                      dtype=torch.long).to(speech_llm_prefix_embeds.device)
+                        input_ids = torch.tensor(input_ids,
+                                                 dtype=torch.int,
+                                                 device=device).unsqueeze(0)
+                        speech_llm_prefix_embeds = self.llm_model.get_input_embeddings(
+                        )(input_ids)
+                        speech_llm_prefix_attention_mask = torch.ones(
+                            speech_llm_prefix_embeds.size(0),
+                            speech_llm_prefix_embeds.size(1),
+                            dtype=torch.long).to(
+                                speech_llm_prefix_embeds.device)
             elif item['role'] == 'user':
                 index = 0
                 for content_item in item['content']:
                     if content_item['type'] == 'text':
                         input_ids = tokenizer.encode(content_item['text'])
-                        input_ids = torch.tensor(input_ids, dtype=torch.int, device=device).unsqueeze(0)
-                        embeds = self.llm_model.get_input_embeddings()(input_ids)
+                        input_ids = torch.tensor(input_ids,
+                                                 dtype=torch.int,
+                                                 device=device).unsqueeze(0)
+                        embeds = self.llm_model.get_input_embeddings()(
+                            input_ids)
                         inputs_embeds.append(embeds)
                         index += input_ids.size(-1)
                         print(f"{content_item['text']}")
                     elif content_item['type'] == 'audio':
-                        speech_values, speech_attention_mask = content_item['audio']
-                        speech_embeds, _ = self.get_speech_features(speech_values, speech_attention_mask)
+                        speech_values, speech_attention_mask = content_item[
+                            'audio']
+                        speech_embeds, _ = self.get_speech_features(
+                            speech_values, speech_attention_mask)
                         inputs_embeds.append(speech_embeds)
                         index += speech_embeds.size(1)
                         print(f"{speech_values.size()}")
@@ -326,92 +361,101 @@ class GOATSLMModel(PreTrainedModel):
                 for content_item in item['content']:
                     if content_item['type'] == 'text':
                         input_ids = tokenizer.encode(content_item['text'])
-                        input_ids = torch.tensor(input_ids, dtype=torch.int, device=device).unsqueeze(0)
-                        embeds = self.llm_model.get_input_embeddings()(input_ids)
+                        input_ids = torch.tensor(input_ids,
+                                                 dtype=torch.int,
+                                                 device=device).unsqueeze(0)
+                        embeds = self.llm_model.get_input_embeddings()(
+                            input_ids)
                         inputs_embeds.append(embeds)
                         index += input_ids.size(-1)
                         print(f"{content_item['text']}")
                 if item['thinking'] == False:
                     input_ids = tokenizer.encode('<think>\n\n</think>\n\n')
-                    input_ids = torch.tensor(input_ids, dtype=torch.int, device=device).unsqueeze(0)
+                    input_ids = torch.tensor(input_ids,
+                                             dtype=torch.int,
+                                             device=device).unsqueeze(0)
                     embeds = self.llm_model.get_input_embeddings()(input_ids)
                     inputs_embeds.append(embeds)
                     index += input_ids.size(-1)
                     print(f"<think>\n\n</think>\n\n")
         print('********************* history end ***************************')
-        multi_turn_for_decoder_indices = [
-            [0, text_llm_prefix_len if speech_llm_prefix_embeds is None else speech_llm_prefix_embeds.size(1)],
-            [-index, -1]]
+        multi_turn_for_decoder_indices = [[
+            0, text_llm_prefix_len if speech_llm_prefix_embeds is None else
+            speech_llm_prefix_embeds.size(1)
+        ], [-index, -1]]
         inputs_embeds = torch.cat(inputs_embeds, dim=1)
         print(f"inputs_embeds: {inputs_embeds.shape}")
         # print(f"multi_turn_for_decoder_indices: {multi_turn_for_decoder_indices}")
         print(f"text_llm_prefix_len: {text_llm_prefix_len}")
-        print(f"speech_llm_prefix_len: {speech_llm_prefix_embeds.size(1) if speech_llm_prefix_embeds is not None else 0}")
-
-        custom_params = {"speech_llm_prefix_embeds": speech_llm_prefix_embeds,
-                         "speech_llm_prefix_attention_mask": speech_llm_prefix_attention_mask,
-                         "text_llm_prefix_len": text_llm_prefix_len,
-                         "text_label": None,
-                         "is_teacher_forcing": False,
-                         "prompt_unit": None,
-                         'max_speech_unit_length': max_speech_unit_length,
-                         'is_speech_generate_run': is_speech_generate_run,
-                         'multi_turn_for_decoder_indices': multi_turn_for_decoder_indices,
-                         'enable_thinking': enable_thinking}
-
-        outputs = self.llm_model.generate(
-            inputs_embeds=inputs_embeds,
-            generation_config=generation_config,
-            custom_params=custom_params
+        print(
+            f"speech_llm_prefix_len: {speech_llm_prefix_embeds.size(1) if speech_llm_prefix_embeds is not None else 0}"
         )
+
+        custom_params = {
+            "speech_llm_prefix_embeds": speech_llm_prefix_embeds,
+            "speech_llm_prefix_attention_mask":
+            speech_llm_prefix_attention_mask,
+            "text_llm_prefix_len": text_llm_prefix_len,
+            "text_label": None,
+            "is_teacher_forcing": False,
+            "prompt_unit": None,
+            'max_speech_unit_length': max_speech_unit_length,
+            'is_speech_generate_run': is_speech_generate_run,
+            'multi_turn_for_decoder_indices': multi_turn_for_decoder_indices,
+            'enable_thinking': enable_thinking
+        }
+
+        outputs = self.llm_model.generate(inputs_embeds=inputs_embeds,
+                                          generation_config=generation_config,
+                                          custom_params=custom_params)
 
         return outputs.sequences, outputs.speech_units
 
-
     @torch.no_grad()
-    def generate(
-        self,
-        input_ids,
-        suffix_input_ids,
-        speech_values=None,
-        speech_attention_mask=None,
-        generation_config=None
-    ):
+    def generate(self,
+                 input_ids,
+                 suffix_input_ids,
+                 speech_values=None,
+                 speech_attention_mask=None,
+                 generation_config=None):
         inputs_embeds, attention_mask = [], []
 
         prefix_embeds = self.llm_model.get_input_embeddings()(input_ids)
-        prefix_attns = torch.ones(prefix_embeds.size(0), prefix_embeds.size(1), dtype=torch.long).to(prefix_embeds.device)
+        prefix_attns = torch.ones(prefix_embeds.size(0),
+                                  prefix_embeds.size(1),
+                                  dtype=torch.long).to(prefix_embeds.device)
         inputs_embeds.append(prefix_embeds)
         attention_mask.append(prefix_attns)
 
         if speech_values is not None:
-            speech_embeds, speech_attention_mask = self.get_speech_features(speech_values, speech_attention_mask)
+            speech_embeds, speech_attention_mask = self.get_speech_features(
+                speech_values, speech_attention_mask)
             inputs_embeds.append(speech_embeds)
             attention_mask.append(speech_attention_mask)
 
         suffix_embeds = self.llm_model.get_input_embeddings()(suffix_input_ids)
-        suffix_attns = torch.ones(suffix_embeds.size(0), suffix_embeds.size(1), dtype=torch.long).to(suffix_embeds.device)
+        suffix_attns = torch.ones(suffix_embeds.size(0),
+                                  suffix_embeds.size(1),
+                                  dtype=torch.long).to(suffix_embeds.device)
         inputs_embeds.append(suffix_embeds)
         attention_mask.append(suffix_attns)
 
         inputs_embeds = torch.cat(inputs_embeds, dim=1)
         attention_mask = torch.cat(attention_mask, dim=1)
 
-        return self.llm_model.generate(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            generation_config=generation_config
-        )
+        return self.llm_model.generate(inputs_embeds=inputs_embeds,
+                                       attention_mask=attention_mask,
+                                       generation_config=generation_config)
 
     @torch.no_grad()
     def chat(
-            self,
-            history,
-            generation_config=None,
-            speech_llm_input_ids=None,
-            max_speech_unit_length=30*50,
-            is_speech_generate_run=True,
-            enable_thinking=False,
+        self,
+        history,
+        generation_config=None,
+        speech_llm_input_ids=None,
+        max_speech_unit_length=30 * 50,
+        is_speech_generate_run=True,
+        enable_thinking=False,
     ):
         inputs_embeds = []
 
@@ -433,14 +477,17 @@ class GOATSLMModel(PreTrainedModel):
                 if text_llm_prefix_len == 0 and speech_llm_input_ids is not None:
                     # text_llm_prefix_len = input_ids.cpu().numpy().tolist()[0].index(151645) + 5 # 151645: <|im_end|>
                     text_llm_prefix_len = input_ids.size(-1)
-                    speech_llm_prefix_embeds = self.llm_model.get_input_embeddings()(speech_llm_input_ids)
-                    speech_llm_prefix_attention_mask = torch.ones(speech_llm_prefix_embeds.size(0),
-                                                                  speech_llm_prefix_embeds.size(1),
-                                                                  dtype=torch.long).to(speech_llm_prefix_embeds.device)
+                    speech_llm_prefix_embeds = self.llm_model.get_input_embeddings(
+                    )(speech_llm_input_ids)
+                    speech_llm_prefix_attention_mask = torch.ones(
+                        speech_llm_prefix_embeds.size(0),
+                        speech_llm_prefix_embeds.size(1),
+                        dtype=torch.long).to(speech_llm_prefix_embeds.device)
             elif len(h) == 2:
                 ### speech
                 speech_values, speech_attention_mask = h[0], h[1]
-                speech_embeds, _ = self.get_speech_features(speech_values, speech_attention_mask)
+                speech_embeds, _ = self.get_speech_features(
+                    speech_values, speech_attention_mask)
                 inputs_embeds.append(speech_embeds)
                 print(f"speech_embeds: {speech_embeds.shape}")
                 index += speech_embeds.size(1)
@@ -454,30 +501,35 @@ class GOATSLMModel(PreTrainedModel):
         # print(generation_config)
         # print(f"inputs_embeds: {len(inputs_embeds)}, {inputs_embeds[0].shape}")
         inputs_embeds = torch.cat(inputs_embeds, dim=1)
-        multi_turn_for_decoder_indices = [
-            [0, multi_turn_indices[1] if speech_llm_input_ids is None else speech_llm_prefix_embeds.size(1)],
-            [multi_turn_indices[-4] - int(inputs_embeds.size(1)), -1]]
+        multi_turn_for_decoder_indices = [[
+            0, multi_turn_indices[1] if speech_llm_input_ids is None else
+            speech_llm_prefix_embeds.size(1)
+        ], [multi_turn_indices[-4] - int(inputs_embeds.size(1)), -1]]
         # inputs_embeds = inputs_embeds[-1]
         print(f"inputs_embeds: {inputs_embeds.shape}")
-        print(f"multi_turn_for_decoder_indices: {multi_turn_for_decoder_indices}")
+        print(
+            f"multi_turn_for_decoder_indices: {multi_turn_for_decoder_indices}")
         print(f"text_llm_prefix_len: {text_llm_prefix_len}")
-        print(f"speech_llm_prefix_len: {speech_llm_prefix_embeds.size(1) if speech_llm_input_ids is not None else 0}")
-
-        custom_params = {"speech_llm_prefix_embeds": speech_llm_prefix_embeds,
-                         "speech_llm_prefix_attention_mask": speech_llm_prefix_attention_mask,
-                         "text_llm_prefix_len": text_llm_prefix_len,
-                         "text_label": None,
-                         "is_teacher_forcing": False,
-                         "prompt_unit": None,
-                         'max_speech_unit_length': max_speech_unit_length,
-                         'is_speech_generate_run': is_speech_generate_run,
-                         'multi_turn_for_decoder_indices': multi_turn_for_decoder_indices,
-                         'enable_thinking': enable_thinking}
-
-        outputs = self.llm_model.generate(
-            inputs_embeds=inputs_embeds,
-            generation_config=generation_config,
-            custom_params=custom_params
+        print(
+            f"speech_llm_prefix_len: {speech_llm_prefix_embeds.size(1) if speech_llm_input_ids is not None else 0}"
         )
+
+        custom_params = {
+            "speech_llm_prefix_embeds": speech_llm_prefix_embeds,
+            "speech_llm_prefix_attention_mask":
+            speech_llm_prefix_attention_mask,
+            "text_llm_prefix_len": text_llm_prefix_len,
+            "text_label": None,
+            "is_teacher_forcing": False,
+            "prompt_unit": None,
+            'max_speech_unit_length': max_speech_unit_length,
+            'is_speech_generate_run': is_speech_generate_run,
+            'multi_turn_for_decoder_indices': multi_turn_for_decoder_indices,
+            'enable_thinking': enable_thinking
+        }
+
+        outputs = self.llm_model.generate(inputs_embeds=inputs_embeds,
+                                          generation_config=generation_config,
+                                          custom_params=custom_params)
 
         return outputs.sequences, outputs.speech_units

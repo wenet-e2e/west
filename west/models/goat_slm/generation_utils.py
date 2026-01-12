@@ -82,15 +82,15 @@ class GenerationWithCE(GenerationMixin):
     """
 
     def _sample(
-            self,
-            input_ids: torch.LongTensor,
-            logits_processor: LogitsProcessorList,
-            stopping_criteria: StoppingCriteriaList,
-            generation_config: GenerationConfig,
-            synced_gpus: bool,
-            streamer: Optional["BaseStreamer"],
-            custom_params={},
-            **model_kwargs,
+        self,
+        input_ids: torch.LongTensor,
+        logits_processor: LogitsProcessorList,
+        stopping_criteria: StoppingCriteriaList,
+        generation_config: GenerationConfig,
+        synced_gpus: bool,
+        streamer: Optional["BaseStreamer"],
+        custom_params={},
+        **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
         Generates sequences of token ids for models with a language modeling head using **multinomial sampling** and
@@ -131,63 +131,82 @@ class GenerationWithCE(GenerationMixin):
         output_scores = generation_config.output_scores
         output_logits = generation_config.output_logits
         return_dict_in_generate = generation_config.return_dict_in_generate
-        has_eos_stopping_criteria = any(hasattr(criteria, "eos_token_id") for criteria in stopping_criteria)
+        has_eos_stopping_criteria = any(
+            hasattr(criteria, "eos_token_id") for criteria in stopping_criteria)
         do_sample = generation_config.do_sample
 
         # init attention / hidden states / scores tuples
         scores = () if (return_dict_in_generate and output_scores) else None
         raw_logits = () if (return_dict_in_generate and output_logits) else None
-        decoder_attentions = () if (return_dict_in_generate and output_attentions) else None
-        cross_attentions = () if (return_dict_in_generate and output_attentions) else None
-        decoder_hidden_states = () if (return_dict_in_generate and output_hidden_states) else None
+        decoder_attentions = () if (return_dict_in_generate
+                                    and output_attentions) else None
+        cross_attentions = () if (return_dict_in_generate
+                                  and output_attentions) else None
+        decoder_hidden_states = () if (return_dict_in_generate
+                                       and output_hidden_states) else None
 
         # if model is an encoder-decoder, retrieve encoder attention weights and hidden states
         if return_dict_in_generate and self.config.is_encoder_decoder:
-            encoder_attentions = model_kwargs["encoder_outputs"].get("attentions") if output_attentions else None
+            encoder_attentions = model_kwargs["encoder_outputs"].get(
+                "attentions") if output_attentions else None
             encoder_hidden_states = (
-                model_kwargs["encoder_outputs"].get("hidden_states") if output_hidden_states else None
-            )
+                model_kwargs["encoder_outputs"].get("hidden_states")
+                if output_hidden_states else None)
 
         # keep track of which sequences are already finished
         batch_size, cur_len = input_ids.shape[:2]
         this_peer_finished = False
-        unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
+        unfinished_sequences = torch.ones(batch_size,
+                                          dtype=torch.long,
+                                          device=input_ids.device)
 
         # ******************************** speech generator **************************
-        speech_decoder_hidden_states = () if (return_dict_in_generate and output_hidden_states) else None
-        speech_llm_prefix_attention_mask = custom_params.get('speech_llm_prefix_attention_mask', None)
-        speech_llm_prefix_embeds = custom_params.get('speech_llm_prefix_embeds', None)
-        is_speech_generate_run = custom_params.get('is_speech_generate_run', True)
+        speech_decoder_hidden_states = () if (
+            return_dict_in_generate and output_hidden_states) else None
+        speech_llm_prefix_attention_mask = custom_params.get(
+            'speech_llm_prefix_attention_mask', None)
+        speech_llm_prefix_embeds = custom_params.get('speech_llm_prefix_embeds',
+                                                     None)
+        is_speech_generate_run = custom_params.get('is_speech_generate_run',
+                                                   True)
         if speech_llm_prefix_embeds is not None and is_speech_generate_run:
             speech_model_kwargs = {}
             for key, value in model_kwargs.items():
                 speech_model_kwargs[key] = copy.deepcopy(value)
             speech_model_kwargs['inputs_embeds'] = speech_llm_prefix_embeds
-            speech_model_kwargs['attention_mask'] = speech_llm_prefix_attention_mask
-            speech_model_kwargs = self._get_initial_cache_position(cur_len, input_ids.device, speech_model_kwargs)
+            speech_model_kwargs[
+                'attention_mask'] = speech_llm_prefix_attention_mask
+            speech_model_kwargs = self._get_initial_cache_position(
+                cur_len, input_ids.device, speech_model_kwargs)
         # ****************************************************************************
-        model_kwargs = self._get_initial_cache_position(cur_len, input_ids.device, model_kwargs)
+        model_kwargs = self._get_initial_cache_position(cur_len,
+                                                        input_ids.device,
+                                                        model_kwargs)
 
         model_forward = self.__call__
-        compile_forward = self._valid_auto_compile_criteria(model_kwargs, generation_config)
+        compile_forward = self._valid_auto_compile_criteria(
+            model_kwargs, generation_config)
         if compile_forward:
             os.environ["TOKENIZERS_PARALLELISM"] = "0"
-            model_forward = self.get_compiled_call(generation_config.compile_config)
+            model_forward = self.get_compiled_call(
+                generation_config.compile_config)
 
         if generation_config.prefill_chunk_size is not None:
-            model_kwargs = self._prefill_chunking(input_ids, generation_config, **model_kwargs)
+            model_kwargs = self._prefill_chunking(input_ids, generation_config,
+                                                  **model_kwargs)
             is_prefill = False
         else:
             is_prefill = True
-
 
         # ******************************** speech generator **************************
         text_label = custom_params.get('text_label', None)
         is_teacher_forcing = custom_params.get('is_teacher_forcing', None)
         prompt_unit = custom_params.get('prompt_unit', None)
-        multi_turn_for_decoder_indices = custom_params.get('multi_turn_for_decoder_indices', [])
+        multi_turn_for_decoder_indices = custom_params.get(
+            'multi_turn_for_decoder_indices', [])
         text_llm_prefix_len = custom_params.get('text_llm_prefix_len', None)
-        max_speech_unit_length = int(custom_params.get('max_speech_unit_length', 50*35))
+        max_speech_unit_length = int(
+            custom_params.get('max_speech_unit_length', 50 * 35))
         enable_thinking = bool(custom_params.get('enable_thinking', False))
         text_n_step = 0
         is_speech_generate_run_again = False
@@ -196,7 +215,9 @@ class GenerationWithCE(GenerationMixin):
         if prompt_unit is not None:
             generated_units = prompt_unit.clone()
         else:
-            generated_units = torch.zeros((1, 0), dtype=torch.int32, device=input_ids.device)
+            generated_units = torch.zeros((1, 0),
+                                          dtype=torch.int32,
+                                          device=input_ids.device)
         this_peer_unit_finished = False if is_speech_generate_run else True
         this_peer_text_finished = False
 
@@ -206,23 +227,34 @@ class GenerationWithCE(GenerationMixin):
         unit_embedd = 0
         # ************************************************************
 
-        while self._has_unfinished_sequences(this_peer_finished and this_peer_unit_finished, synced_gpus, device=input_ids.device):
+        while self._has_unfinished_sequences(this_peer_finished
+                                             and this_peer_unit_finished,
+                                             synced_gpus,
+                                             device=input_ids.device):
             speech_outputs = None
             if is_speech_generate_run and speech_llm_prefix_embeds is not None and text_n_step == 0:
                 # prepare model inputs
-                speech_model_inputs = self.prepare_inputs_for_generation(input_ids, **speech_model_kwargs)
+                speech_model_inputs = self.prepare_inputs_for_generation(
+                    input_ids, **speech_model_kwargs)
                 # prepare variable output controls (note: some models won't accept all output controls)
-                speech_model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
-                speech_model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
+                speech_model_inputs.update(
+                    {"output_attentions": output_attentions}
+                    if output_attentions else {})
+                speech_model_inputs.update(
+                    {"output_hidden_states": output_hidden_states}
+                    if output_hidden_states else {})
                 speech_model_inputs.update({"start_layer": 0})
                 speech_outputs = self(**speech_model_inputs, return_dict=True)
 
             # prepare model inputs
-            model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            model_inputs = self.prepare_inputs_for_generation(
+                input_ids, **model_kwargs)
 
             # prepare variable output controls (note: some models won't accept all output controls)
-            model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
-            model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
+            model_inputs.update({"output_attentions": output_attentions}
+                                if output_attentions else {})
+            model_inputs.update({"output_hidden_states": output_hidden_states}
+                                if output_hidden_states else {})
             model_inputs.update({"start_layer": 0})
 
             if is_prefill:
@@ -243,30 +275,31 @@ class GenerationWithCE(GenerationMixin):
 
                 # Copy is needed to avoid keeping a hanging ref to outputs.logits which may be very large for first iteration
                 # (the clone itself is always small)
-                next_token_logits = outputs.logits[:, -1, :].to(copy=True, dtype=torch.float32, device=input_ids.device)
+                next_token_logits = outputs.logits[:, -1, :].to(
+                    copy=True, dtype=torch.float32, device=input_ids.device)
 
                 # pre-process distribution
-                next_token_scores = logits_processor(input_ids, next_token_logits)
+                next_token_scores = logits_processor(input_ids,
+                                                     next_token_logits)
 
                 # Store scores, attentions and hidden_states when required
                 if return_dict_in_generate:
                     if output_scores:
-                        scores += (next_token_scores,)
+                        scores += (next_token_scores, )
                     if output_logits:
-                        raw_logits += (next_token_logits,)
+                        raw_logits += (next_token_logits, )
                     if output_attentions:
-                        decoder_attentions += (
-                            (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (outputs.attentions,)
-                        )
+                        decoder_attentions += ((outputs.decoder_attentions, )
+                                               if self.config.is_encoder_decoder
+                                               else (outputs.attentions, ))
                         if self.config.is_encoder_decoder:
-                            cross_attentions += (outputs.cross_attentions,)
+                            cross_attentions += (outputs.cross_attentions, )
 
                     if output_hidden_states:
                         decoder_hidden_states += (
-                            (outputs.decoder_hidden_states,)
-                            if self.config.is_encoder_decoder
-                            else (outputs.hidden_states,)
-                        )
+                            (outputs.decoder_hidden_states, )
+                            if self.config.is_encoder_decoder else
+                            (outputs.hidden_states, ))
                         if is_speech_generate_run and text_n_step == 0 and speech_llm_prefix_embeds is not None:
                             # speech_decoder_hidden_states += (
                             #     (speech_outputs.decoder_hidden_states,)
@@ -274,21 +307,31 @@ class GenerationWithCE(GenerationMixin):
                             #     else (speech_outputs.hidden_states,)
                             # )
                             speech_decoder_hidden_states_ = []
-                            for index, (speech_llm_hidden, text_llm_hidden) in enumerate(zip(speech_outputs.hidden_states, outputs.hidden_states)):
-                                speech_decoder_hidden_states_.append(torch.cat([speech_llm_hidden, text_llm_hidden[:, text_llm_prefix_len:, :]], dim=-2))
-                            speech_decoder_hidden_states += (tuple(speech_decoder_hidden_states_),)
+                            for index, (speech_llm_hidden,
+                                        text_llm_hidden) in enumerate(
+                                            zip(speech_outputs.hidden_states,
+                                                outputs.hidden_states)):
+                                speech_decoder_hidden_states_.append(
+                                    torch.cat([
+                                        speech_llm_hidden,
+                                        text_llm_hidden[:,
+                                                        text_llm_prefix_len:, :]
+                                    ],
+                                              dim=-2))
+                            speech_decoder_hidden_states += (
+                                tuple(speech_decoder_hidden_states_), )
                         else:
                             speech_decoder_hidden_states += (
-                                (outputs.decoder_hidden_states,)
-                                if self.config.is_encoder_decoder
-                                else (outputs.hidden_states,)
-                            )
+                                (outputs.decoder_hidden_states, )
+                                if self.config.is_encoder_decoder else
+                                (outputs.hidden_states, ))
 
                 # token selection
                 if do_sample:
                     probs = nn.functional.softmax(next_token_scores, dim=-1)
                     # TODO (joao): this OP throws "skipping cudagraphs due to ['incompatible ops']", find solution
-                    next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
+                    next_tokens = torch.multinomial(probs,
+                                                    num_samples=1).squeeze(1)
                 else:
                     next_tokens = torch.argmax(next_token_scores, dim=-1)
 
@@ -299,22 +342,27 @@ class GenerationWithCE(GenerationMixin):
 
                 # finished sentences should have their next token be a padding token
                 if has_eos_stopping_criteria:
-                    next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
+                    next_tokens = next_tokens * unfinished_sequences + pad_token_id * (
+                        1 - unfinished_sequences)
 
                 # update generated ids, model inputs, and length for next step
                 input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
 
-                if enable_thinking == False or self.config.model_type=='qwen2': # not enable think
+                if enable_thinking == False or self.config.model_type == 'qwen2':  # not enable think
                     if text_n_step > 1:
                         is_speech_generate_run_again = is_speech_generate_run and True
                 else:  # enable thinking
-                    if (input_ids.shape[-1] >= 3 and input_ids[0][-3].item() == 151668) or (input_ids.shape[-1] >= 4 and input_ids[0][-4].item() == 10): # </think>=151668 /n/n=271
+                    if (input_ids.shape[-1] >= 3 and input_ids[0][-3].item()
+                            == 151668) or (input_ids.shape[-1] >= 4
+                                           and input_ids[0][-4].item()
+                                           == 10):  # </think>=151668 /n/n=271
                         is_speech_generate_run_again = is_speech_generate_run and True
 
                 # if streamer is not None:
                 #     streamer.put(next_tokens.cpu())
 
-                unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids, scores)
+                unfinished_sequences = unfinished_sequences & ~stopping_criteria(
+                    input_ids, scores)
                 this_peer_finished = unfinished_sequences.max() == 0
                 if this_peer_finished and is_speech_generate_run_again == False:
                     this_peer_unit_finished = True  # 设置的max_text_token太小了，还没有</think>就用完了。
@@ -334,41 +382,67 @@ class GenerationWithCE(GenerationMixin):
                 if is_speech_gen_first_step:
                     input_hidden_states = []
                     for hidden in speech_decoder_hidden_states:
-                        if multi_turn_for_decoder_indices != [] and hidden[self.freeze_layer+1].size(1) != 1:
+                        if multi_turn_for_decoder_indices != [] and hidden[
+                                self.freeze_layer + 1].size(1) != 1:
                             # print(f"multi_turn_for_decoder_indices: {multi_turn_for_decoder_indices}")
                             for start_index, end_index in multi_turn_for_decoder_indices:
-                                input_hidden_states.append(hidden[self.freeze_layer+1][:, start_index:end_index if end_index != -1 else None, :])
+                                input_hidden_states.append(
+                                    hidden[self.freeze_layer + 1]
+                                    [:, start_index:end_index if end_index !=
+                                     -1 else None, :])
                         else:
-                            input_hidden_states.append(hidden[self.freeze_layer+1])
+                            input_hidden_states.append(
+                                hidden[self.freeze_layer + 1])
                     input_hidden_states = torch.cat(input_hidden_states, dim=-2)
                     is_speech_gen_first_step = False
 
                     input_hidden_states_len = input_hidden_states.size(1)
-                    cache_position = torch.arange(input_hidden_states_len, device=input_ids.device)
-                    attention_mask = torch.ones(1, input_hidden_states_len, dtype=torch.long, device=input_ids.device)
+                    cache_position = torch.arange(input_hidden_states_len,
+                                                  device=input_ids.device)
+                    attention_mask = torch.ones(1,
+                                                input_hidden_states_len,
+                                                dtype=torch.long,
+                                                device=input_ids.device)
                     # speech_generator_model_kwargs.pop('inputs_embeds')
-                    speech_generator_model_kwargs['cache_position'] = cache_position
-                    speech_generator_model_kwargs['attention_mask'] = attention_mask
-                elif this_peer_text_finished == False: # and text_n_step <= 200
-                    input_hidden_states = decoder_hidden_states[-1][self.freeze_layer+1] + unit_embedd
+                    speech_generator_model_kwargs[
+                        'cache_position'] = cache_position
+                    speech_generator_model_kwargs[
+                        'attention_mask'] = attention_mask
+                elif this_peer_text_finished == False:  # and text_n_step <= 200
+                    input_hidden_states = decoder_hidden_states[-1][
+                        self.freeze_layer + 1] + unit_embedd
                 else:
                     input_hidden_states = unit_embedd
 
-                speech_model_inputs = self.prepare_inputs_for_generation(input_ids=torch.zeros((1, 0), dtype=torch.int32, device=input_ids.device),
-                                                                         inputs_embeds=input_hidden_states, **speech_generator_model_kwargs)
+                speech_model_inputs = self.prepare_inputs_for_generation(
+                    input_ids=torch.zeros((1, 0),
+                                          dtype=torch.int32,
+                                          device=input_ids.device),
+                    inputs_embeds=input_hidden_states,
+                    **speech_generator_model_kwargs)
 
                 # prepare variable output controls (note: some models won't accept all output controls)
-                speech_model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
-                speech_model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
-                speech_model_inputs.update({"start_layer": self.freeze_layer+1})
+                speech_model_inputs.update(
+                    {"output_attentions": output_attentions}
+                    if output_attentions else {})
+                speech_model_inputs.update(
+                    {"output_hidden_states": output_hidden_states}
+                    if output_hidden_states else {})
+                speech_model_inputs.update(
+                    {"start_layer": self.freeze_layer + 1})
 
-                speech_outputs = self.speech_generator(**speech_model_inputs, return_dict=True)
+                speech_outputs = self.speech_generator(**speech_model_inputs,
+                                                       return_dict=True)
 
                 # 生成unit
-                cur_units = torch.zeros((1, 0), dtype=torch.int32, device=input_ids.device)
-                last_hidden_states = speech_outputs['hidden_states'][-1][:, -1:, :]
+                cur_units = torch.zeros((1, 0),
+                                        dtype=torch.int32,
+                                        device=input_ids.device)
+                last_hidden_states = speech_outputs['hidden_states'][-1][:,
+                                                                         -1:, :]
                 for tok_iter in range(self.config.num_tok_per_group):
-                    logits: torch.Tensor = self.head_unit[tok_iter](last_hidden_states).squeeze(1)
+                    logits: torch.Tensor = self.head_unit[tok_iter](
+                        last_hidden_states).squeeze(1)
                     # if logits_ is None:
                     #     logits_ = logits
                     # else:
@@ -378,13 +452,19 @@ class GenerationWithCE(GenerationMixin):
                     #     logits[:, 4096] = logits[:, 4097] = -1e10
                     # item_next = torch.argmax(logits, dim=-1, keepdim=True)
                     # item_next = sample(logits, previous_tokens=previous_tokens, repetition_penalty=1.35, temperature=0.7, index=n_step % 1200)[0]
-                    item_next = ras_sampling(logits.log_softmax(dim=-1).squeeze(dim=0), generated_units).unsqueeze(0)
+                    item_next = ras_sampling(
+                        logits.log_softmax(dim=-1).squeeze(dim=0),
+                        generated_units).unsqueeze(0)
 
-                    if item_next == 4097 or torch.argmax(logits, dim=-1) == 4097 or torch.argmax(logits, dim=-1) == 4096 or n_step > max_speech_unit_length:
+                    if item_next == 4097 or torch.argmax(
+                            logits, dim=-1) == 4097 or torch.argmax(
+                                logits, dim=-1
+                            ) == 4096 or n_step > max_speech_unit_length:
                         this_peer_unit_finished = True
                         break
                     cur_units = torch.cat([cur_units, item_next], dim=-1)
-                    generated_units = torch.cat([generated_units, item_next], dim=-1)
+                    generated_units = torch.cat([generated_units, item_next],
+                                                dim=-1)
                     n_step += 1
                 if this_peer_unit_finished == False:
                     unit_embedd = self.emb_unit(cur_units).sum(1, keepdim=True)
@@ -396,7 +476,6 @@ class GenerationWithCE(GenerationMixin):
                         is_encoder_decoder=self.config.is_encoder_decoder,
                     )
                 this_peer_text_finished = this_peer_finished
-
 
         if streamer is not None:
             streamer.end()
@@ -427,7 +506,6 @@ class GenerationWithCE(GenerationMixin):
         else:
             return input_ids
 
-
     @torch.no_grad()
     def generate(
         self,
@@ -435,7 +513,8 @@ class GenerationWithCE(GenerationMixin):
         generation_config: Optional[GenerationConfig] = None,
         logits_processor: Optional[LogitsProcessorList] = None,
         stopping_criteria: Optional[StoppingCriteriaList] = None,
-        prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], List[int]]] = None,
+        prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor],
+                                                    List[int]]] = None,
         synced_gpus: Optional[bool] = None,
         assistant_model: Optional["PreTrainedModel"] = None,
         streamer: Optional["BaseStreamer"] = None,
@@ -443,7 +522,7 @@ class GenerationWithCE(GenerationMixin):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         use_model_defaults: Optional[bool] = None,
         custom_generate: Optional[str] = None,
-        custom_params = {},
+        custom_params={},
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -546,54 +625,65 @@ class GenerationWithCE(GenerationMixin):
             # they receive the same inputs as `generate`, only with `model` instead of `self`. They can access to
             # methods from `GenerationMixin` through `model`.
             global_keys_to_exclude = {"self", "kwargs"}
-            generate_arguments = {key: value for key, value in locals().items() if key not in global_keys_to_exclude}
+            generate_arguments = {
+                key: value
+                for key, value in locals().items()
+                if key not in global_keys_to_exclude
+            }
             generate_arguments.update(kwargs)
 
             custom_generate_function = self.load_custom_generate(
-                custom_generate, trust_remote_code=trust_remote_code, **kwargs
-            )
+                custom_generate, trust_remote_code=trust_remote_code, **kwargs)
             return custom_generate_function(model=self, **generate_arguments)
 
         # 1. Handle `generation_config` and kwargs that might update it, and validate the `.generate()` call
-        tokenizer = kwargs.pop("tokenizer", None)  # Pull this out first, we only use it for stopping criteria
-        assistant_tokenizer = kwargs.pop("assistant_tokenizer", None)  # only used for assisted generation
+        tokenizer = kwargs.pop(
+            "tokenizer",
+            None)  # Pull this out first, we only use it for stopping criteria
+        assistant_tokenizer = kwargs.pop(
+            "assistant_tokenizer", None)  # only used for assisted generation
 
         generation_config, model_kwargs = self._prepare_generation_config(
-            generation_config, use_model_defaults, **kwargs
-        )
+            generation_config, use_model_defaults, **kwargs)
         self._validate_model_kwargs(model_kwargs.copy())
-        self._validate_assistant(assistant_model, tokenizer, assistant_tokenizer)
+        self._validate_assistant(assistant_model, tokenizer,
+                                 assistant_tokenizer)
 
         # 2. Set generation parameters if not already defined
         if synced_gpus is None:
-            synced_gpus = (is_deepspeed_zero3_enabled() or is_fsdp_managed_module(self)) and dist.get_world_size() > 1
+            synced_gpus = (
+                is_deepspeed_zero3_enabled()
+                or is_fsdp_managed_module(self)) and dist.get_world_size() > 1
 
-        logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
-        stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
+        logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList(
+        )
+        stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList(
+        )
 
-        accepts_attention_mask = "attention_mask" in set(inspect.signature(self.forward).parameters.keys())
+        accepts_attention_mask = "attention_mask" in set(
+            inspect.signature(self.forward).parameters.keys())
         requires_attention_mask = "encoder_outputs" not in model_kwargs
-        kwargs_has_attention_mask = model_kwargs.get("attention_mask", None) is not None
+        kwargs_has_attention_mask = model_kwargs.get("attention_mask",
+                                                     None) is not None
 
         # 3. Define model inputs
         inputs_tensor, model_input_name, model_kwargs = self._prepare_model_inputs(
-            inputs, generation_config.bos_token_id, model_kwargs
-        )
+            inputs, generation_config.bos_token_id, model_kwargs)
         batch_size = inputs_tensor.shape[0]
 
         device = inputs_tensor.device
-        self._prepare_special_tokens(generation_config, kwargs_has_attention_mask, device=device)
+        self._prepare_special_tokens(generation_config,
+                                     kwargs_has_attention_mask,
+                                     device=device)
 
         # decoder-only models must use left-padding for batched generation.
         if not self.config.is_encoder_decoder:
             # If `input_ids` was given, check if the last id in any sequence is `pad_token_id`
             # Note: If using, `inputs_embeds` this check does not work, because we want to be more hands-off.
-            if (
-                generation_config._pad_token_tensor is not None
-                and batch_size > 1
-                and len(inputs_tensor.shape) == 2
-                and torch.sum(inputs_tensor[:, -1] == generation_config._pad_token_tensor) > 0
-            ):
+            if (generation_config._pad_token_tensor is not None
+                    and batch_size > 1 and len(inputs_tensor.shape) == 2
+                    and torch.sum(inputs_tensor[:, -1] ==
+                                  generation_config._pad_token_tensor) > 0):
                 logger.warning(
                     "A decoder-only architecture is being used, but right-padding was detected! For correct "
                     "generation results, please set `padding_side='left'` when initializing the tokenizer."
@@ -606,19 +696,21 @@ class GenerationWithCE(GenerationMixin):
             generation_config.use_cache = True
 
         if not kwargs_has_attention_mask and requires_attention_mask and accepts_attention_mask:
-            model_kwargs["attention_mask"] = self._prepare_attention_mask_for_generation(
-                inputs_tensor, generation_config, model_kwargs
-            )
+            model_kwargs[
+                "attention_mask"] = self._prepare_attention_mask_for_generation(
+                    inputs_tensor, generation_config, model_kwargs)
         elif kwargs_has_attention_mask:
             # TODO (joao): generalize this check with other types of inputs
-            if model_input_name == "input_ids" and len(model_kwargs["attention_mask"].shape) > 2:
-                raise ValueError("`attention_mask` passed to `generate` must be 2D.")
+            if model_input_name == "input_ids" and len(
+                    model_kwargs["attention_mask"].shape) > 2:
+                raise ValueError(
+                    "`attention_mask` passed to `generate` must be 2D.")
 
         if self.config.is_encoder_decoder and "encoder_outputs" not in model_kwargs:
             # if model is encoder decoder encoder_outputs are created and added to `model_kwargs`
             model_kwargs = self._prepare_encoder_decoder_kwargs_for_generation(
-                inputs_tensor, model_kwargs, model_input_name, generation_config
-            )
+                inputs_tensor, model_kwargs, model_input_name,
+                generation_config)
 
         # 5. Prepare `input_ids` which will be used for auto-regressive generation
         if self.config.is_encoder_decoder:
@@ -626,11 +718,13 @@ class GenerationWithCE(GenerationMixin):
                 batch_size=batch_size,
                 model_input_name=model_input_name,
                 model_kwargs=model_kwargs,
-                decoder_start_token_id=generation_config._decoder_start_token_tensor,
+                decoder_start_token_id=generation_config.
+                _decoder_start_token_tensor,
                 device=inputs_tensor.device,
             )
         else:
-            input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop("input_ids")
+            input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop(
+                "input_ids")
 
         if generation_config.token_healing:
             input_ids = self.heal_tokens(input_ids, tokenizer)
@@ -640,8 +734,10 @@ class GenerationWithCE(GenerationMixin):
 
         # 6. Prepare `max_length` depending on other stopping criteria.
         input_ids_length = input_ids.shape[1]
-        has_default_max_length = kwargs.get("max_length") is None and generation_config.max_length is not None
-        has_default_min_length = kwargs.get("min_length") is None and generation_config.min_length is not None
+        has_default_max_length = kwargs.get(
+            "max_length") is None and generation_config.max_length is not None
+        has_default_min_length = kwargs.get(
+            "min_length") is None and generation_config.min_length is not None
         generation_config = self._prepare_generated_length(
             generation_config=generation_config,
             has_default_max_length=has_default_max_length,
@@ -654,25 +750,25 @@ class GenerationWithCE(GenerationMixin):
         # If the model supports `logits_to_keep` in forward(), set it to 1 to avoid computing the whole
         # logit matrix. This can save a lot of memory during the first forward pass. Note that assisted decoding
         # dynamically overrides this value as it can need more than the last token logits
-        if self._supports_logits_to_keep() and "logits_to_keep" not in model_kwargs:
+        if self._supports_logits_to_keep(
+        ) and "logits_to_keep" not in model_kwargs:
             model_kwargs["logits_to_keep"] = 1
 
-        self._validate_generated_length(generation_config, input_ids_length, has_default_max_length)
+        self._validate_generated_length(generation_config, input_ids_length,
+                                        has_default_max_length)
 
         # 7. Prepare the cache.
         # - `model_kwargs` may be updated in place with a cache as defined by the parameters in `generation_config`.
         # - different models have a different cache name expected by the model (default = "past_key_values")
         # - `max_length`, prepared above, is used to determine the maximum cache length
         max_cache_length = generation_config.max_length - 1
-        if (
-            inputs_tensor.shape[1] != input_ids_length
-            and model_input_name == "inputs_embeds"
-            and not self.config.is_encoder_decoder
-        ):
+        if (inputs_tensor.shape[1] != input_ids_length
+                and model_input_name == "inputs_embeds"
+                and not self.config.is_encoder_decoder):
             max_cache_length += inputs_tensor.shape[1]
-        self._prepare_cache_for_generation(
-            generation_config, model_kwargs, assistant_model, batch_size, max_cache_length, device
-        )
+        self._prepare_cache_for_generation(generation_config, model_kwargs,
+                                           assistant_model, batch_size,
+                                           max_cache_length, device)
 
         # 8. determine generation mode
         generation_mode = generation_config.get_generation_mode(assistant_model)
@@ -706,8 +802,10 @@ class GenerationWithCE(GenerationMixin):
             negative_prompt_attention_mask=negative_prompt_attention_mask,
         )
         prepared_stopping_criteria = self._get_stopping_criteria(
-            generation_config=generation_config, stopping_criteria=stopping_criteria, tokenizer=tokenizer, **kwargs
-        )
+            generation_config=generation_config,
+            stopping_criteria=stopping_criteria,
+            tokenizer=tokenizer,
+            **kwargs)
 
         # Set model_kwargs `use_cache` so we can use it later in forward runs
         model_kwargs["use_cache"] = generation_config.use_cache
@@ -717,14 +815,18 @@ class GenerationWithCE(GenerationMixin):
             if generation_config.num_return_sequences > 1:
                 raise ValueError(
                     "num_return_sequences has to be 1 when doing assisted generate, "
-                    f"but is {generation_config.num_return_sequences}."
-                )
+                    f"but is {generation_config.num_return_sequences}.")
             if batch_size > 1:
-                raise ValueError("assisted generate is only supported for batch_size = 1")
+                raise ValueError(
+                    "assisted generate is only supported for batch_size = 1")
             if not model_kwargs["use_cache"]:
                 raise ValueError("assisted generate requires `use_cache=True`")
-            if generation_config.cache_implementation in ["static", "hybrid", "sliding_window"]:
-                raise ValueError("assisted generate is not supported with Static cache classes`")
+            if generation_config.cache_implementation in [
+                    "static", "hybrid", "sliding_window"
+            ]:
+                raise ValueError(
+                    "assisted generate is not supported with Static cache classes`"
+                )
             if self._is_stateful:
                 # In assisted generation we need the ability to confirm whether the model would pick certain tokens,
                 # which is not possible with stateful models (they can't reset to a previous subset of generated text)
@@ -791,7 +893,8 @@ class GenerationWithCE(GenerationMixin):
                 **model_kwargs,
             )
 
-        elif generation_mode in (GenerationMode.SAMPLE, GenerationMode.GREEDY_SEARCH):
+        elif generation_mode in (GenerationMode.SAMPLE,
+                                 GenerationMode.GREEDY_SEARCH):
             # 11. expand input_ids with `num_return_sequences` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
                 input_ids=input_ids,
@@ -812,7 +915,8 @@ class GenerationWithCE(GenerationMixin):
                 **model_kwargs,
             )
 
-        elif generation_mode in (GenerationMode.BEAM_SAMPLE, GenerationMode.BEAM_SEARCH):
+        elif generation_mode in (GenerationMode.BEAM_SAMPLE,
+                                 GenerationMode.BEAM_SEARCH):
             # 11. interleave input_ids with `num_beams` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
                 input_ids=input_ids,
@@ -873,29 +977,29 @@ class GenerationWithCE(GenerationMixin):
                         f"of positive integers, but is {generation_config.force_words_ids}."
                     )
 
-                if (
-                    not isinstance(generation_config.force_words_ids, list)
-                    or len(generation_config.force_words_ids) == 0
-                ):
+                if (not isinstance(generation_config.force_words_ids, list)
+                        or len(generation_config.force_words_ids) == 0):
                     typeerror()
 
                 for word_ids in generation_config.force_words_ids:
                     if isinstance(word_ids[0], list):
                         if not isinstance(word_ids, list) or len(word_ids) == 0:
                             typeerror()
-                        if any(not isinstance(token_ids, list) for token_ids in word_ids):
+                        if any(not isinstance(token_ids, list)
+                               for token_ids in word_ids):
                             typeerror()
                         if any(
-                            any((not isinstance(token_id, int) or token_id < 0) for token_id in token_ids)
-                            for token_ids in word_ids
-                        ):
+                                any((not isinstance(token_id, int)
+                                     or token_id < 0) for token_id in token_ids)
+                                for token_ids in word_ids):
                             typeerror()
 
                         constraint = DisjunctiveConstraint(word_ids)
                     else:
                         if not isinstance(word_ids, list) or len(word_ids) == 0:
                             typeerror()
-                        if any((not isinstance(token_id, int) or token_id < 0) for token_id in word_ids):
+                        if any((not isinstance(token_id, int) or token_id < 0)
+                               for token_id in word_ids):
                             typeerror()
 
                         constraint = PhrasalConstraint(word_ids)
@@ -931,11 +1035,9 @@ class GenerationWithCE(GenerationMixin):
             )
 
         # Convert to legacy cache format if requested
-        if (
-            generation_config.return_legacy_cache is True
-            and hasattr(result, "past_key_values")
-            and getattr(result.past_key_values, "to_legacy_cache") is not None
-        ):
+        if (generation_config.return_legacy_cache is True
+                and hasattr(result, "past_key_values") and getattr(
+                    result.past_key_values, "to_legacy_cache") is not None):
             result.past_key_values = result.past_key_values.to_legacy_cache()
         return result
 

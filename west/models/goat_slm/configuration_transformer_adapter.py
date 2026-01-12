@@ -23,7 +23,6 @@ from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_rope_utils import rope_config_validation
 from transformers.utils import logging
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -156,13 +155,13 @@ class AdapterConfig(PretrainedConfig):
         max_position_embeddings=32768,
         initializer_range=0.02,
         rms_norm_eps=1e-6,
-        use_cache=False, #True,
+        use_cache=False,  #True,
         tie_word_embeddings=False,
         rope_theta=10000.0,
         rope_scaling=None,
         use_sliding_window=False,
         sliding_window=4096,
-        max_window_layers=0, #28,
+        max_window_layers=0,  #28,
         attention_dropout=0.0,
         **kwargs,
     ):

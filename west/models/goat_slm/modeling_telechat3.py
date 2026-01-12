@@ -18,7 +18,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Callable, Optional, Union,Tuple
+from typing import Callable, Optional, Union, Tuple
 
 import torch
 import torch.utils.checkpoint
@@ -53,13 +53,18 @@ logger = logging.get_logger(__name__)
 # Compute the inverse frequencies
 def find_correction_dim(num_rotations, dim, base, max_position_embeddings):
     """Inverse dimension formula to find the dimension based on the number of rotations"""
-    return (dim * math.log(max_position_embeddings / (num_rotations * 2 * math.pi))) / (2 * math.log(base))
+    return (dim * math.log(max_position_embeddings /
+                           (num_rotations * 2 * math.pi))) / (2 *
+                                                              math.log(base))
 
 
-def find_correction_range(low_rot, high_rot, dim, base, max_position_embeddings):
+def find_correction_range(low_rot, high_rot, dim, base,
+                          max_position_embeddings):
     """Find dimension range bounds based on rotations"""
-    low = math.floor(find_correction_dim(low_rot, dim, base, max_position_embeddings))
-    high = math.ceil(find_correction_dim(high_rot, dim, base, max_position_embeddings))
+    low = math.floor(
+        find_correction_dim(low_rot, dim, base, max_position_embeddings))
+    high = math.ceil(
+        find_correction_dim(high_rot, dim, base, max_position_embeddings))
     return max(low, 0), min(high, dim - 1)
 
 
@@ -73,8 +78,10 @@ def linear_ramp_factor(min, max, dim):
 
 
 def _compute_telechat_yarn_parameters(
-        config: PretrainedConfig, device: "torch.device", seq_len: Optional[int] = None, **rope_kwargs
-) -> tuple["torch.Tensor", float]:
+        config: PretrainedConfig,
+        device: "torch.device",
+        seq_len: Optional[int] = None,
+        **rope_kwargs) -> tuple["torch.Tensor", float]:
     """
     Computes the inverse frequencies with NTK scaling. Please refer to the
     [original paper](https://huggingface.co/papers/2309.00071)
@@ -98,8 +105,10 @@ def _compute_telechat_yarn_parameters(
         )
 
     base = config.rope_theta
-    partial_rotary_factor = config.partial_rotary_factor if hasattr(config, "partial_rotary_factor") else 1.0
-    head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
+    partial_rotary_factor = config.partial_rotary_factor if hasattr(
+        config, "partial_rotary_factor") else 1.0
+    head_dim = getattr(config, "head_dim",
+                       config.hidden_size // config.num_attention_heads)
     dim = int(head_dim * partial_rotary_factor)
     factor = config.rope_scaling["factor"]
     attention_factor = config.rope_scaling.get("attention_factor")
@@ -110,7 +119,8 @@ def _compute_telechat_yarn_parameters(
     # `original_max_position_embeddings` field containing the pretrained value. They use the ratio between these two
     # values to compute the default attention scaling factor, instead of using `factor`.
     if "original_max_position_embeddings" in config.rope_scaling:
-        original_max_position_embeddings = config.rope_scaling["original_max_position_embeddings"]
+        original_max_position_embeddings = config.rope_scaling[
+            "original_max_position_embeddings"]
         factor = config.max_position_embeddings / original_max_position_embeddings
     else:
         original_max_position_embeddings = config.max_position_embeddings
@@ -123,7 +133,8 @@ def _compute_telechat_yarn_parameters(
     # Sets the attention factor as suggested in the paper
     if attention_factor is None:
         if mscale and mscale_all_dim:
-            attention_factor = float(get_mscale(factor, mscale) / get_mscale(factor, mscale_all_dim))
+            attention_factor = float(
+                get_mscale(factor, mscale) / get_mscale(factor, mscale_all_dim))
         else:
             attention_factor = get_mscale(factor)
 
@@ -134,18 +145,19 @@ def _compute_telechat_yarn_parameters(
 
     # Note on variable naming: "interpolation" comes from the original technique, where we interpolate the position IDs
     # to expand the possible context length. In other words, interpolation = apply scaling factor.
-    pos_freqs = base ** (torch.arange(0, dim, 2).to(device=device, dtype=torch.float) / dim)
+    pos_freqs = base**(
+        torch.arange(0, dim, 2).to(device=device, dtype=torch.float) / dim)
     inv_freq_extrapolation = 1.0 / pos_freqs
     inv_freq_interpolation = 1.0 / (factor * pos_freqs)
 
-    low, high = find_correction_range(beta_fast, beta_slow, dim, base, original_max_position_embeddings)
+    low, high = find_correction_range(beta_fast, beta_slow, dim, base,
+                                      original_max_position_embeddings)
 
     # Get n-dimensional rotational scaling corrected for extrapolation
-    inv_freq_extrapolation_factor = 1 - linear_ramp_factor(low, high, dim // 2).to(device=device, dtype=torch.float)
-    inv_freq = (
-            inv_freq_interpolation * (1 - inv_freq_extrapolation_factor)
-            + inv_freq_extrapolation * inv_freq_extrapolation_factor
-    )
+    inv_freq_extrapolation_factor = 1 - linear_ramp_factor(
+        low, high, dim // 2).to(device=device, dtype=torch.float)
+    inv_freq = (inv_freq_interpolation * (1 - inv_freq_extrapolation_factor) +
+                inv_freq_extrapolation * inv_freq_extrapolation_factor)
     return inv_freq, attention_factor
 
 
@@ -154,6 +166,7 @@ ROPE_INIT_FUNCTIONS['telechat3-yarn'] = _compute_telechat_yarn_parameters
 
 @use_kernel_forward_from_hub("RMSNorm")
 class Telechat3RMSNorm(nn.Module):
+
     def __init__(self, hidden_size, eps=1e-6):
         """
         Telechat3RMSNorm is equivalent to T5LayerNorm
@@ -166,7 +179,8 @@ class Telechat3RMSNorm(nn.Module):
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        hidden_states = hidden_states * torch.rsqrt(variance +
+                                                    self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
 
     def extra_repr(self):
@@ -174,11 +188,13 @@ class Telechat3RMSNorm(nn.Module):
 
 
 class Telechat3RotaryEmbedding(nn.Module):
+
     def __init__(self, config: Telechat3Config, device=None):
         super().__init__()
         # BC: "rope_type" was originally "type"
         if hasattr(config, "rope_scaling") and config.rope_scaling is not None:
-            self.rope_type = config.rope_scaling.get("rope_type", config.rope_scaling.get("type"))
+            self.rope_type = config.rope_scaling.get(
+                "rope_type", config.rope_scaling.get("type"))
         else:
             self.rope_type = "default"
         self.max_seq_len_cached = config.max_position_embeddings
@@ -187,19 +203,24 @@ class Telechat3RotaryEmbedding(nn.Module):
         self.config = config
         self.rope_init_fn = ROPE_INIT_FUNCTIONS[self.rope_type]
 
-        inv_freq, self.attention_scaling = self.rope_init_fn(self.config, device)
+        inv_freq, self.attention_scaling = self.rope_init_fn(
+            self.config, device)
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self.original_inv_freq = self.inv_freq
 
     @torch.no_grad()
     @dynamic_rope_update  # power user: used with advanced RoPE types (e.g. dynamic rope)
     def forward(self, x, position_ids):
-        inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1).to(x.device)
+        inv_freq_expanded = self.inv_freq[None, :, None].float().expand(
+            position_ids.shape[0], -1, 1).to(x.device)
         position_ids_expanded = position_ids[:, None, :].float()
 
-        device_type = x.device.type if isinstance(x.device.type, str) and x.device.type != "mps" else "cpu"
-        with torch.autocast(device_type=device_type, enabled=False):  # Force float32
-            freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+        device_type = x.device.type if isinstance(
+            x.device.type, str) and x.device.type != "mps" else "cpu"
+        with torch.autocast(device_type=device_type,
+                            enabled=False):  # Force float32
+            freqs = (inv_freq_expanded.float()
+                     @ position_ids_expanded.float()).transpose(1, 2)
             emb = torch.cat((freqs, freqs), dim=-1)
             cos = emb.cos() * self.attention_scaling
             sin = emb.sin() * self.attention_scaling
@@ -209,7 +230,7 @@ class Telechat3RotaryEmbedding(nn.Module):
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
-    x1 = x[..., : x.shape[-1] // 2]
+    x1 = x[..., :x.shape[-1] // 2]
     x2 = x[..., x.shape[-1] // 2:]
     return torch.cat((-x2, x1), dim=-1)
 
@@ -242,18 +263,26 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
 
 
 class Telechat3MLP(nn.Module):
+
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
-        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=config.mlp_bias)
-        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=config.mlp_bias)
-        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=config.mlp_bias)
+        self.gate_proj = nn.Linear(self.hidden_size,
+                                   self.intermediate_size,
+                                   bias=config.mlp_bias)
+        self.up_proj = nn.Linear(self.hidden_size,
+                                 self.intermediate_size,
+                                 bias=config.mlp_bias)
+        self.down_proj = nn.Linear(self.intermediate_size,
+                                   self.hidden_size,
+                                   bias=config.mlp_bias)
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, x):
-        down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        down_proj = self.down_proj(
+            self.act_fn(self.gate_proj(x)) * self.up_proj(x))
         return down_proj
 
 
@@ -265,30 +294,37 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     batch, num_key_value_heads, slen, head_dim = hidden_states.shape
     if n_rep == 1:
         return hidden_states
-    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
-    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+    hidden_states = hidden_states[:, :,
+                                  None, :, :].expand(batch, num_key_value_heads,
+                                                     n_rep, slen, head_dim)
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen,
+                                 head_dim)
 
 
 def eager_attention_forward(
-        module: nn.Module,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attention_mask: Optional[torch.Tensor],
-        scaling: float,
-        dropout: float = 0.0,
-        **kwargs,
+    module: nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    scaling: float,
+    dropout: float = 0.0,
+    **kwargs,
 ):
     key_states = repeat_kv(key, module.num_key_value_groups)
     value_states = repeat_kv(value, module.num_key_value_groups)
 
     attn_weights = torch.matmul(query, key_states.transpose(2, 3)) * scaling
     if attention_mask is not None:
-        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        causal_mask = attention_mask[:, :, :, :key_states.shape[-2]]
         attn_weights = attn_weights + causal_mask
 
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
-    attn_weights = nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    attn_weights = nn.functional.softmax(attn_weights,
+                                         dim=-1,
+                                         dtype=torch.float32).to(query.dtype)
+    attn_weights = nn.functional.dropout(attn_weights,
+                                         p=dropout,
+                                         training=module.training)
     attn_output = torch.matmul(attn_weights, value_states)
     attn_output = attn_output.transpose(1, 2).contiguous()
 
@@ -302,53 +338,67 @@ class Telechat3Attention(nn.Module):
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
-        self.head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
+        self.head_dim = getattr(
+            config, "head_dim",
+            config.hidden_size // config.num_attention_heads)
         self.num_key_value_groups = config.num_attention_heads // config.num_key_value_heads
-        self.scaling = self.head_dim ** -0.5
+        self.scaling = self.head_dim**-0.5
         self.attention_dropout = config.attention_dropout
         self.is_causal = True
 
-        self.q_proj = nn.Linear(
-            config.hidden_size, config.num_attention_heads * self.head_dim, bias=config.attention_bias
-        )
-        self.k_proj = nn.Linear(
-            config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias
-        )
-        self.v_proj = nn.Linear(
-            config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias
-        )
-        self.o_proj = nn.Linear(
-            config.num_attention_heads * self.head_dim, config.hidden_size, bias=config.attention_bias
-        )
+        self.q_proj = nn.Linear(config.hidden_size,
+                                config.num_attention_heads * self.head_dim,
+                                bias=config.attention_bias)
+        self.k_proj = nn.Linear(config.hidden_size,
+                                config.num_key_value_heads * self.head_dim,
+                                bias=config.attention_bias)
+        self.v_proj = nn.Linear(config.hidden_size,
+                                config.num_key_value_heads * self.head_dim,
+                                bias=config.attention_bias)
+        self.o_proj = nn.Linear(config.num_attention_heads * self.head_dim,
+                                config.hidden_size,
+                                bias=config.attention_bias)
 
     def forward(
-            self,
-            hidden_states: torch.Tensor,
-            position_embeddings: tuple[torch.Tensor, torch.Tensor],
-            attention_mask: Optional[torch.Tensor],
-            past_key_value: Optional[Cache] = None,
-            cache_position: Optional[torch.LongTensor] = None,
-            **kwargs: Unpack[FlashAttentionKwargs],
-    ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
-        attn_idx = kwargs.get("attn_idx") if kwargs.get("attn_idx") else self.layer_idx
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
+        past_key_value: Optional[Cache] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor],
+               Optional[tuple[torch.Tensor]]]:
+        attn_idx = kwargs.get("attn_idx") if kwargs.get(
+            "attn_idx") else self.layer_idx
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
 
-        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(
+            1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(
+            1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(
+            1, 2)
 
         cos, sin = position_embeddings
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        query_states, key_states = apply_rotary_pos_emb(query_states,
+                                                        key_states, cos, sin)
 
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
-            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-            key_states, value_states = past_key_value.update(key_states, value_states, attn_idx, cache_kwargs)
+            cache_kwargs = {
+                "sin": sin,
+                "cos": cos,
+                "cache_position": cache_position
+            }
+            key_states, value_states = past_key_value.update(
+                key_states, value_states, attn_idx, cache_kwargs)
 
         attention_interface: Callable = eager_attention_forward
         if self.config._attn_implementation != "eager":
-            attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+            attention_interface = ALL_ATTENTION_FUNCTIONS[
+                self.config._attn_implementation]
 
         attn_output, attn_weights = attention_interface(
             self,
@@ -367,6 +417,7 @@ class Telechat3Attention(nn.Module):
 
 
 class Telechat3DecoderLayer(GradientCheckpointingLayer):
+
     def __init__(self, config: Telechat3Config, layer_idx: int):
         super().__init__()
         self.hidden_size = config.hidden_size
@@ -374,21 +425,26 @@ class Telechat3DecoderLayer(GradientCheckpointingLayer):
         self.self_attn = Telechat3Attention(config=config, layer_idx=layer_idx)
 
         self.mlp = Telechat3MLP(config)
-        self.input_layernorm = Telechat3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = Telechat3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = Telechat3RMSNorm(config.hidden_size,
+                                                eps=config.rms_norm_eps)
+        self.post_attention_layernorm = Telechat3RMSNorm(
+            config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
-            self,
-            hidden_states: torch.Tensor,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_value: Optional[Cache] = None,
-            output_attentions: Optional[bool] = False,
-            use_cache: Optional[bool] = False,
-            cache_position: Optional[torch.LongTensor] = None,
-            position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
-            **kwargs: Unpack[FlashAttentionKwargs],
-    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[
+            tuple[torch.Tensor,
+                  torch.Tensor]] = None,  # necessary, but kept here for BC
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor,
+                                                 torch.FloatTensor]]]:
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
 
@@ -412,19 +468,22 @@ class Telechat3DecoderLayer(GradientCheckpointingLayer):
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
 
-        outputs = (hidden_states,)
+        outputs = (hidden_states, )
         if output_attentions:
-            outputs += (self_attn_weights,)
+            outputs += (self_attn_weights, )
 
         return outputs
 
 
 class Telechat3GroupDecoderLayer(GradientCheckpointingLayer):
+
     def __init__(self, config: Telechat3Config, layer_idx: int):
         super().__init__()
 
         if config.num_hidden_layers < config.num_hidden_layer_groups or config.num_hidden_layers % config.num_hidden_layer_groups != 0:
-            raise ValueError("layers num must be greater than  groups and could be divided into interger")
+            raise ValueError(
+                "layers num must be greater than  groups and could be divided into interger"
+            )
 
         self.inter_layer = config.num_hidden_layers // config.num_hidden_layer_groups
 
@@ -433,41 +492,51 @@ class Telechat3GroupDecoderLayer(GradientCheckpointingLayer):
         self.share_ffn = config.share_ffn
         self.layer_idx = layer_idx
         if self.share_attn:
-            self.self_attn = Telechat3Attention(config=config, layer_idx=layer_idx)
+            self.self_attn = Telechat3Attention(config=config,
+                                                layer_idx=layer_idx)
         else:
-            self.self_attn = nn.ModuleList(
-                [Telechat3Attention(config, self.inter_layer * layer_idx + inter_idx) for inter_idx in
-                 range(self.inter_layer)]
-            )
+            self.self_attn = nn.ModuleList([
+                Telechat3Attention(config,
+                                   self.inter_layer * layer_idx + inter_idx)
+                for inter_idx in range(self.inter_layer)
+            ])
         if self.share_ffn:
             self.mlp = Telechat3MLP(config)
         else:
-            self.mlp = nn.ModuleList([Telechat3MLP(config) for i in range(self.inter_layer)])
+            self.mlp = nn.ModuleList(
+                [Telechat3MLP(config) for i in range(self.inter_layer)])
 
-        self.input_layernorm = nn.ModuleList(
-            [Telechat3RMSNorm(config.hidden_size, eps=config.rms_norm_eps) for i in range(self.inter_layer)])
-        self.post_attention_layernorm = nn.ModuleList(
-            [Telechat3RMSNorm(config.hidden_size, eps=config.rms_norm_eps) for i in range(self.inter_layer)])
+        self.input_layernorm = nn.ModuleList([
+            Telechat3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            for i in range(self.inter_layer)
+        ])
+        self.post_attention_layernorm = nn.ModuleList([
+            Telechat3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            for i in range(self.inter_layer)
+        ])
 
     def forward(
-            self,
-            hidden_states: torch.Tensor,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_value: Optional[Cache] = None,
-            output_attentions: Optional[bool] = False,
-            use_cache: Optional[bool] = False,
-            cache_position: Optional[torch.LongTensor] = None,
-            position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
-            **kwargs: Unpack[FlashAttentionKwargs],
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[
+            Tuple[torch.Tensor,
+                  torch.Tensor]] = None,  # necessary, but kept here for BC
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor,
+                                                 torch.FloatTensor]]]:
         for i in range(self.inter_layer):
             residual = hidden_states
 
             hidden_states = self.input_layernorm[i](hidden_states)
             if self.share_attn:
                 # Self Attention
-                attn_idx = i + self.inter_layer* self.layer_idx
+                attn_idx = i + self.inter_layer * self.layer_idx
                 kwargs["attn_idx"] = attn_idx
                 hidden_states, self_attn_weights = self.self_attn(
                     hidden_states=hidden_states,
@@ -504,9 +573,9 @@ class Telechat3GroupDecoderLayer(GradientCheckpointingLayer):
                 hidden_states = self.mlp[i](hidden_states)
             hidden_states = residual + hidden_states
 
-            outputs = (hidden_states,)
+            outputs = (hidden_states, )
             if output_attentions:
-                outputs += (self_attn_weights,)
+                outputs += (self_attn_weights, )
 
         return outputs
 
@@ -543,24 +612,34 @@ class Telechat3PreTrainedModel(PreTrainedModel):
 
 @auto_docstring
 class Telechat3Model(Telechat3PreTrainedModel):
+
     def __init__(self, config: Telechat3Config):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.embedding_size, self.padding_idx)
-        self.embedding_hidden_mapping_in = nn.Linear(config.embedding_size, config.hidden_size, bias=False)
+        self.embed_tokens = nn.Embedding(config.vocab_size,
+                                         config.embedding_size,
+                                         self.padding_idx)
+        self.embedding_hidden_mapping_in = nn.Linear(config.embedding_size,
+                                                     config.hidden_size,
+                                                     bias=False)
         if config.num_hidden_layers == config.num_hidden_layer_groups:
-            self.layers = nn.ModuleList(
-                [Telechat3DecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
-            )
+            self.layers = nn.ModuleList([
+                Telechat3DecoderLayer(config, layer_idx)
+                for layer_idx in range(config.num_hidden_layers)
+            ])
         else:
-            self.layers = nn.ModuleList(
-                [Telechat3GroupDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layer_groups)]
-            )
-        self.norm = Telechat3RMSNorm(config.embedding_size, eps=config.rms_norm_eps)
+            self.layers = nn.ModuleList([
+                Telechat3GroupDecoderLayer(config, layer_idx)
+                for layer_idx in range(config.num_hidden_layer_groups)
+            ])
+        self.norm = Telechat3RMSNorm(config.embedding_size,
+                                     eps=config.rms_norm_eps)
         self.rotary_emb = Telechat3RotaryEmbedding(config=config)
-        self.embedding_hidden_mapping_out = nn.Linear(config.hidden_size, config.embedding_size, bias=False)
+        self.embedding_hidden_mapping_out = nn.Linear(config.hidden_size,
+                                                      config.embedding_size,
+                                                      bias=False)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing
@@ -575,26 +654,27 @@ class Telechat3Model(Telechat3PreTrainedModel):
     @can_return_tuple
     @auto_docstring
     def forward(
-            self,
-            input_ids: Optional[torch.LongTensor] = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_values: Optional[Cache] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            cache_position: Optional[torch.LongTensor] = None,
-            **flash_attn_kwargs: Unpack[FlashAttentionKwargs],
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        **flash_attn_kwargs: Unpack[FlashAttentionKwargs],
     ) -> BaseModelOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
+        output_hidden_states = (output_hidden_states
+                                if output_hidden_states is not None else
+                                self.config.output_hidden_states)
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+            raise ValueError(
+                "You must specify exactly one of input_ids or inputs_embeds")
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
@@ -604,19 +684,26 @@ class Telechat3Model(Telechat3PreTrainedModel):
 
         # TODO (joao): remove this exception in v4.56 -- it exists for users that try to pass a legacy cache
         if not isinstance(past_key_values, (type(None), Cache)):
-            raise ValueError("The `past_key_values` should be either a `Cache` object or `None`.")
+            raise ValueError(
+                "The `past_key_values` should be either a `Cache` object or `None`."
+            )
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-        inputs_embeds = self.embedding_hidden_mapping_in(inputs_embeds) if self.embedding_hidden_mapping_in.in_features == inputs_embeds.shape[-1] else inputs_embeds
+        inputs_embeds = self.embedding_hidden_mapping_in(
+            inputs_embeds
+        ) if self.embedding_hidden_mapping_in.in_features == inputs_embeds.shape[
+            -1] else inputs_embeds
         if use_cache and past_key_values is None:
             past_key_values = DynamicCache()
 
         if cache_position is None:
-            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
-            cache_position = torch.arange(
-                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
-            )
+            past_seen_tokens = past_key_values.get_seq_length(
+            ) if past_key_values is not None else 0
+            cache_position = torch.arange(past_seen_tokens,
+                                          past_seen_tokens +
+                                          inputs_embeds.shape[1],
+                                          device=inputs_embeds.device)
 
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
@@ -641,9 +728,10 @@ class Telechat3Model(Telechat3PreTrainedModel):
 
         start_layer = flash_attn_kwargs.get('start_layer', 0)
 
-        for index, decoder_layer in enumerate(self.layers[start_layer: self.config.num_hidden_layer_groups]):
+        for index, decoder_layer in enumerate(
+                self.layers[start_layer:self.config.num_hidden_layer_groups]):
             if output_hidden_states:
-                all_hidden_states += (hidden_states,)
+                all_hidden_states += (hidden_states, )
 
             layer_outputs = decoder_layer(
                 hidden_states,
@@ -660,14 +748,14 @@ class Telechat3Model(Telechat3PreTrainedModel):
             hidden_states = layer_outputs[0]
 
             if output_attentions:
-                all_self_attns += (layer_outputs[1],)
+                all_self_attns += (layer_outputs[1], )
 
         hidden_states = self.embedding_hidden_mapping_out(hidden_states)
         hidden_states = self.norm(hidden_states)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
-            all_hidden_states += (hidden_states,)
+            all_hidden_states += (hidden_states, )
 
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
@@ -677,11 +765,13 @@ class Telechat3Model(Telechat3PreTrainedModel):
         )
 
 
-class KwargsForCausalLM(FlashAttentionKwargs, LossKwargs): ...
+class KwargsForCausalLM(FlashAttentionKwargs, LossKwargs):
+    ...
 
 
 @auto_docstring
-class Telechat3ForCausalLM(Telechat3PreTrainedModel, GenerationWithCE, GenerationMixin):
+class Telechat3ForCausalLM(Telechat3PreTrainedModel, GenerationWithCE,
+                           GenerationMixin):
     _tied_weights_keys = ["lm_head.weight"]
     _tp_plan = {"lm_head": "colwise_rep"}
     _pp_plan = {"lm_head": (["hidden_states"], ["logits"])}
@@ -690,7 +780,9 @@ class Telechat3ForCausalLM(Telechat3PreTrainedModel, GenerationWithCE, Generatio
         super().__init__(config)
         self.model = Telechat3Model(config)
         self.vocab_size = config.vocab_size
-        self.lm_head = nn.Linear(config.embedding_size, config.vocab_size, bias=False)
+        self.lm_head = nn.Linear(config.embedding_size,
+                                 config.vocab_size,
+                                 bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -716,24 +808,24 @@ class Telechat3ForCausalLM(Telechat3PreTrainedModel, GenerationWithCE, Generatio
     @can_return_tuple
     @auto_docstring
     def forward(
-            self,
-            input_ids: Optional[torch.LongTensor] = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_values: Optional[Cache] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            labels: Optional[torch.LongTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            cache_position: Optional[torch.LongTensor] = None,
-            logits_to_keep: Union[int, torch.Tensor] = 0,
-            **kwargs: Unpack[KwargsForCausalLM],
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
+        **kwargs: Unpack[KwargsForCausalLM],
     ) -> CausalLMOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
+        output_hidden_states = (output_hidden_states
+                                if output_hidden_states is not None else
+                                self.config.output_hidden_states)
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs: BaseModelOutputWithPast = self.model(
@@ -751,12 +843,16 @@ class Telechat3ForCausalLM(Telechat3PreTrainedModel, GenerationWithCE, Generatio
 
         hidden_states = outputs.last_hidden_state
         # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        slice_indices = slice(-logits_to_keep, None) if isinstance(
+            logits_to_keep, int) else logits_to_keep
         logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            loss = self.loss_function(logits=logits,
+                                      labels=labels,
+                                      vocab_size=self.config.vocab_size,
+                                      **kwargs)
 
         return CausalLMOutputWithPast(
             loss=loss,
@@ -767,8 +863,7 @@ class Telechat3ForCausalLM(Telechat3PreTrainedModel, GenerationWithCE, Generatio
         )
 
 
-@auto_docstring(
-    custom_intro="""
+@auto_docstring(custom_intro="""
     The Telechat3 Model transformer with a sequence classification head on top (linear layer).
 
     [`Telechat3ForSequenceClassification`] uses the last token in order to do the classification, as other causal models
@@ -779,9 +874,9 @@ class Telechat3ForCausalLM(Telechat3PreTrainedModel, GenerationWithCE, Generatio
     no `pad_token_id` is defined, it simply takes the last value in each row of the batch. Since it cannot guess the
     padding tokens when `inputs_embeds` are passed instead of `input_ids`, it does the same (take the last value in
     each row of the batch).
-    """
-)
+    """)
 class Telechat3ForSequenceClassification(Telechat3PreTrainedModel):
+
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
@@ -800,16 +895,16 @@ class Telechat3ForSequenceClassification(Telechat3PreTrainedModel):
     @can_return_tuple
     @auto_docstring
     def forward(
-            self,
-            input_ids: Optional[torch.LongTensor] = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_values: Optional[Cache] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            labels: Optional[torch.LongTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
     ) -> SequenceClassifierOutputWithPast:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -837,13 +932,17 @@ class Telechat3ForSequenceClassification(Telechat3PreTrainedModel):
             batch_size = inputs_embeds.shape[0]
 
         if self.config.pad_token_id is None and batch_size != 1:
-            raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
+            raise ValueError(
+                "Cannot handle batch sizes > 1 if no padding token is defined.")
         if self.config.pad_token_id is None:
             last_non_pad_token = -1
         elif input_ids is not None:
             # To handle both left- and right- padding, we take the rightmost token that is not equal to pad_token_id
-            non_pad_mask = (input_ids != self.config.pad_token_id).to(logits.device, torch.int32)
-            token_indices = torch.arange(input_ids.shape[-1], device=logits.device, dtype=torch.int32)
+            non_pad_mask = (input_ids != self.config.pad_token_id).to(
+                logits.device, torch.int32)
+            token_indices = torch.arange(input_ids.shape[-1],
+                                         device=logits.device,
+                                         dtype=torch.int32)
             last_non_pad_token = (token_indices * non_pad_mask).argmax(-1)
         else:
             last_non_pad_token = -1
@@ -852,11 +951,15 @@ class Telechat3ForSequenceClassification(Telechat3PreTrainedModel):
                 "unexpected if using padding tokens in conjunction with `inputs_embeds.`"
             )
 
-        pooled_logits = logits[torch.arange(batch_size, device=logits.device), last_non_pad_token]
+        pooled_logits = logits[torch.arange(batch_size, device=logits.device),
+                               last_non_pad_token]
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits=logits, labels=labels, pooled_logits=pooled_logits, config=self.config)
+            loss = self.loss_function(logits=logits,
+                                      labels=labels,
+                                      pooled_logits=pooled_logits,
+                                      config=self.config)
 
         return SequenceClassifierOutputWithPast(
             loss=loss,
@@ -889,17 +992,17 @@ class Telechat3ForQuestionAnswering(Telechat3PreTrainedModel):
     @can_return_tuple
     @auto_docstring
     def forward(
-            self,
-            input_ids: Optional[torch.LongTensor] = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_values: Optional[Cache] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            start_positions: Optional[torch.LongTensor] = None,
-            end_positions: Optional[torch.LongTensor] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            **kwargs,
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        start_positions: Optional[torch.LongTensor] = None,
+        end_positions: Optional[torch.LongTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        **kwargs,
     ) -> QuestionAnsweringModelOutput:
         outputs: BaseModelOutputWithPast = self.transformer(
             input_ids,
@@ -920,7 +1023,8 @@ class Telechat3ForQuestionAnswering(Telechat3PreTrainedModel):
 
         loss = None
         if start_positions is not None and end_positions is not None:
-            loss = self.loss_function(start_logits, end_logits, start_positions, end_positions, **kwargs)
+            loss = self.loss_function(start_logits, end_logits, start_positions,
+                                      end_positions, **kwargs)
 
         return QuestionAnsweringModelOutput(
             loss=loss,
@@ -933,6 +1037,7 @@ class Telechat3ForQuestionAnswering(Telechat3PreTrainedModel):
 
 @auto_docstring
 class Telechat3ForTokenClassification(Telechat3PreTrainedModel):
+
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
@@ -958,16 +1063,16 @@ class Telechat3ForTokenClassification(Telechat3PreTrainedModel):
     @can_return_tuple
     @auto_docstring
     def forward(
-            self,
-            input_ids: Optional[torch.LongTensor] = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_values: Optional[Cache] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            labels: Optional[torch.LongTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
     ) -> TokenClassifierOutput:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):

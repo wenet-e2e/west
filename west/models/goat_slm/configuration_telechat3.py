@@ -17,7 +17,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """ Telechat configuration"""
 
 from transformers.configuration_utils import PretrainedConfig
@@ -42,34 +41,34 @@ class Telechat3Config(PretrainedConfig):
     }
 
     def __init__(
-            self,
-            attention_bias=False,
-            attention_dropout=0.0,
-            bos_token_id=1,
-            embedding_size=1024,
-            eos_token_id=2,
-            head_dim=128,
-            hidden_act="silu",
-            hidden_size=6144,
-            initializer_range=0.0048,
-            intermediate_size=24576,
-            max_position_embeddings=2048,
-            mlp_bias=False,
-            model_type="telechat3",
-            num_attention_heads=48,
-            num_hidden_layers=64,
-            num_key_value_heads=None,
-            pad_token_id=None,
-            pretraining_tp=1,
-            rms_norm_eps=1e-5,
-            rope_scaling=None,
-            rope_theta=1000000.0,
-            share_attention= True,
-            share_ffn= False,
-            tie_word_embeddings=False,
-            use_cache=True,
-            vocab_size=131072,
-            **kwargs,
+        self,
+        attention_bias=False,
+        attention_dropout=0.0,
+        bos_token_id=1,
+        embedding_size=1024,
+        eos_token_id=2,
+        head_dim=128,
+        hidden_act="silu",
+        hidden_size=6144,
+        initializer_range=0.0048,
+        intermediate_size=24576,
+        max_position_embeddings=2048,
+        mlp_bias=False,
+        model_type="telechat3",
+        num_attention_heads=48,
+        num_hidden_layers=64,
+        num_key_value_heads=None,
+        pad_token_id=None,
+        pretraining_tp=1,
+        rms_norm_eps=1e-5,
+        rope_scaling=None,
+        rope_theta=1000000.0,
+        share_attention=True,
+        share_ffn=False,
+        tie_word_embeddings=False,
+        use_cache=True,
+        vocab_size=131072,
+        **kwargs,
     ):
         self.attention_bias = attention_bias
         self.attention_dropout = attention_dropout
@@ -99,7 +98,9 @@ class Telechat3Config(PretrainedConfig):
         self.vocab_size = vocab_size
 
         if head_dim is not None and head_dim != self.hidden_size // self.num_attention_heads:
-            raise ValueError("head_dim != hidden_size//num_attention_head.Please check the config.")
+            raise ValueError(
+                "head_dim != hidden_size//num_attention_head.Please check the config."
+            )
         self.head_dim = head_dim if head_dim is not None else self.hidden_size // self.num_attention_heads
 
         # Validate the correctness of rotary position embeddings parameters
