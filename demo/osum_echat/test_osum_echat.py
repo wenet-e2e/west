@@ -43,7 +43,7 @@ if __name__ == '__main__':
     # For natural language think model in west
     ckpt_path = hf_hub_download(repo_id="ASLP-lab/OSUM-EChat",
                                 filename="language_think_west.pt")
-    osum_config_path = "../examples/aishell/asr/conf/osum_echat.json"
+    osum_config_path = "../../examples/aishell/asr/conf/osum_echat.json"
     config_new = AutoConfig.from_pretrained(osum_config_path)
     osum_model = AutoModel.from_config(config_new)
     osum_model.eval()
