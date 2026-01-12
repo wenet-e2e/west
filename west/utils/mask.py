@@ -169,7 +169,9 @@ def add_optional_chunk_mask(xs: torch.Tensor,
         chunk_masks = masks
     return chunk_masks
 
+
 # print(non_causal_mask(torch.tensor([2, 3, 4], dtype=torch.long)))
+
 
 def lengths_to_padding_mask(lens):
     bsz, max_lens = lens.size(0), torch.max(lens).item()

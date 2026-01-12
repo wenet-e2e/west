@@ -21,7 +21,6 @@ AutoModel.register(TouchFlowConfig, TouchFlow)
 AutoConfig.register("touch_tts", TouchTTSConfig)
 AutoModel.register(TouchTTSConfig, TouchTTS)
 
-
 AutoConfig.register("osum_echat", OSUMEChatConfig)
 AutoModel.register(OSUMEChatConfig, OSUMEChat)
 AutoConfig.register("kimi_audio", KimiAudioConfig)
