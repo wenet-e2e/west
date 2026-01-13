@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-# ruff: noqa: E501
-# flake8: noqa: E501
 """
 @Author : songyd, chenhj
 @File   : generation_utils_e2e.py
 """
 import copy
 import inspect
+import os
 import warnings
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple, Union
@@ -14,10 +13,13 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from transformers import PreTrainedModel
+from transformers.generation.beam_constraints import (DisjunctiveConstraint,
+                                                      PhrasalConstraint)
+from transformers.generation.beam_search import (BeamSearchScorer,
+                                                 ConstrainedBeamSearchScorer)
 from transformers.generation.streamers import BaseStreamer
-from transformers.generation.utils import (NEED_SETUP_CACHE_CLASSES_MAPPING,
-                                           DynamicCache,
-                                           GenerateEncoderDecoderOutput,
+from transformers.generation.utils import (GenerateEncoderDecoderOutput,
                                            GenerateNonBeamOutput,
                                            GenerateOutput, GenerationConfig,
                                            GenerationMixin, GenerationMode,
@@ -25,9 +27,7 @@ from transformers.generation.utils import (NEED_SETUP_CACHE_CLASSES_MAPPING,
                                            StoppingCriteriaList, logging)
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
-from transformers.utils import (ModelOutput, is_accelerate_available,
-                                is_hqq_available, is_optimum_quanto_available,
-                                is_torchdynamo_compiling)
+from transformers.utils import ModelOutput
 
 from .sample_util import ras_sampling
 
@@ -103,7 +103,7 @@ class GenerationWithCE(GenerationMixin):
             [`~generation.GenerateDecoderOnlyOutput`] if `model.config.is_encoder_decoder=False` and
             `return_dict_in_generate=True` or a [`~generation.GenerateEncoderDecoderOutput`] if
             `model.config.is_encoder_decoder=True`.
-        """
+        """  # noqa: E501
         # init values
         pad_token_id = generation_config._pad_token_tensor
         output_attentions = generation_config.output_attentions
@@ -244,7 +244,8 @@ class GenerationWithCE(GenerationMixin):
                 outputs = model_forward(**model_inputs, return_dict=True)
 
             if not this_peer_finished:
-                # synced_gpus: don't waste resources running the code we don't need; kwargs must be updated before skipping
+                # synced_gpus: don't waste resources running the code we don't need;
+                # kwargs must be updated before skipping
                 # model_kwargs = self._update_model_kwargs_for_generation(
                 #     outputs,
                 #     model_kwargs,
@@ -253,7 +254,7 @@ class GenerationWithCE(GenerationMixin):
                 if synced_gpus and this_peer_finished:
                     continue
 
-                # Copy is needed to avoid keeping a hanging ref to outputs.logits which may be very large for first iteration
+                # Copy is needed to avoid keeping a hanging ref to outputs.logits which may be very large for first iteration  # noqa: E501
                 # (the clone itself is always small)
                 next_token_logits = outputs.logits[:, -1, :].to(
                     copy=True, dtype=torch.float32, device=input_ids.device)
@@ -331,9 +332,9 @@ class GenerationWithCE(GenerationMixin):
                 if not enable_thinking or self.config.model_type == 'qwen2':  # not enable think
                     if text_n_step > 1:
                         is_speech_generate_run_again = is_speech_generate_run and True
-                else:  # enable thinking
-                    if (input_ids.shape[-1] >= 3 and input_ids[0][-3].item()== 151668) or (input_ids.shape[-1] >= 4
-                                           and input_ids[0][-4].item() == 10):  # </think>=151668 /n/n=271
+                else:  # enable thinking  # </think>=151668 /n/n=271
+                    if (input_ids.shape[-1] >= 3 and input_ids[0][-3].item() == 151668) or \
+                            (input_ids.shape[-1] >= 4 and input_ids[0][-4].item() == 10):
                         is_speech_generate_run_again = is_speech_generate_run and True
 
                 # if streamer is not None:
@@ -366,7 +367,7 @@ class GenerationWithCE(GenerationMixin):
                             for start_index, end_index in multi_turn_for_decoder_indices:
                                 input_hidden_states.append(
                                     hidden[self.freeze_layer + 1]
-                                    [:, start_index:end_index if end_index !=-1 else None, :])
+                                    [:, start_index:end_index if end_index != -1 else None, :])
                         else:
                             input_hidden_states.append(
                                 hidden[self.freeze_layer + 1])
@@ -427,7 +428,7 @@ class GenerationWithCE(GenerationMixin):
                     # if this_peer_finished == False:
                     #     logits[:, 4096] = logits[:, 4097] = -1e10
                     # item_next = torch.argmax(logits, dim=-1, keepdim=True)
-                    # item_next = sample(logits, previous_tokens=previous_tokens, repetition_penalty=1.35, temperature=0.7, index=n_step % 1200)[0]
+                    # item_next = sample(logits, previous_tokens=previous_tokens, repetition_penalty=1.35, temperature=0.7, index=n_step % 1200)[0]  # noqa: E501
                     item_next = ras_sampling(
                         logits.log_softmax(dim=-1).squeeze(dim=0),
                         generated_units).unsqueeze(0)
@@ -1078,7 +1079,7 @@ class GenerateDecoderOnlyOutput(ModelOutput):
             `(batch_size, num_heads, sequence_length, embed_size_per_head)`) and optionally if
             `config.is_encoder_decoder=True` 2 additional tensors of shape `(batch_size, num_heads,
             encoder_sequence_length, embed_size_per_head)`.
-    """
+    """  # noqa: E501
 
     speech_units: torch.LongTensor = None
     sequences: torch.LongTensor = None

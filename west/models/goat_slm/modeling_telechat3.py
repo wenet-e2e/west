@@ -1,6 +1,3 @@
-# ruff: noqa: E501
-# flake8: noqa: E501
-# coding=utf-8
 # Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
 #
 # This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX
@@ -482,7 +479,8 @@ class Telechat3GroupDecoderLayer(GradientCheckpointingLayer):
     def __init__(self, config: Telechat3Config, layer_idx: int):
         super().__init__()
 
-        if config.num_hidden_layers < config.num_hidden_layer_groups or config.num_hidden_layers % config.num_hidden_layer_groups != 0:
+        if config.num_hidden_layers < config.num_hidden_layer_groups or \
+                config.num_hidden_layers % config.num_hidden_layer_groups != 0:
             raise ValueError(
                 "layers num must be greater than  groups and could be divided into interger"
             )
