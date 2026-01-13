@@ -9,6 +9,7 @@ import datetime
 import io
 import logging
 import os
+import sys
 import tempfile
 import uuid
 from pathlib import Path
@@ -22,12 +23,11 @@ from gradio import processing_utils
 from transformers import (AutoTokenizer, GenerationConfig,
                           WhisperFeatureExtractor)
 
-# import sys
-# sys.path.insert(0, '../../../west')
-# sys.path.insert(0, '../../west/models/goat_slm/CosyVoice')
-# sys.path.insert(0,
-#                 '../../west/models/goat_slm/CosyVoice/third_party/Matcha-TTS')
-from west.models.goat_slm import CosyVoice, GOATSLMModel
+sys.path.insert(0, '../../../west')
+sys.path.insert(0, '../../west/models/goat_slm/CosyVoice')
+sys.path.insert(0,
+                '../../west/models/goat_slm/CosyVoice/third_party/Matcha-TTS')
+from west.models.goat_slm import CosyVoice, GOATSLMModel  # noqa: E402
 
 generation_config = GenerationConfig(max_new_tokens=512,
                                      min_new_tokens=10,

@@ -7,7 +7,6 @@
 """
 import copy
 import inspect
-import os
 import warnings
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple, Union
@@ -15,13 +14,10 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from transformers import PreTrainedModel
-from transformers.generation.beam_search import (BeamSearchScorer,
-                                                 ConstrainedBeamSearchScorer)
-from transformers.generation.constraints import (DisjunctiveConstraint,
-                                                 PhrasalConstraint)
 from transformers.generation.streamers import BaseStreamer
-from transformers.generation.utils import (GenerateEncoderDecoderOutput,
+from transformers.generation.utils import (NEED_SETUP_CACHE_CLASSES_MAPPING,
+                                           DynamicCache,
+                                           GenerateEncoderDecoderOutput,
                                            GenerateNonBeamOutput,
                                            GenerateOutput, GenerationConfig,
                                            GenerationMixin, GenerationMode,
@@ -29,7 +25,9 @@ from transformers.generation.utils import (GenerateEncoderDecoderOutput,
                                            StoppingCriteriaList, logging)
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
-from transformers.utils import ModelOutput
+from transformers.utils import (ModelOutput, is_accelerate_available,
+                                is_hqq_available, is_optimum_quanto_available,
+                                is_torchdynamo_compiling)
 
 from .sample_util import ras_sampling
 
@@ -334,10 +332,8 @@ class GenerationWithCE(GenerationMixin):
                     if text_n_step > 1:
                         is_speech_generate_run_again = is_speech_generate_run and True
                 else:  # enable thinking
-                    if (input_ids.shape[-1] >= 3 and input_ids[0][-3].item()
-                            == 151668) or (input_ids.shape[-1] >= 4
-                                           and input_ids[0][-4].item()
-                                           == 10):  # </think>=151668 /n/n=271
+                    if (input_ids.shape[-1] >= 3 and input_ids[0][-3].item()== 151668) or (input_ids.shape[-1] >= 4
+                                           and input_ids[0][-4].item() == 10):  # </think>=151668 /n/n=271
                         is_speech_generate_run_again = is_speech_generate_run and True
 
                 # if streamer is not None:
