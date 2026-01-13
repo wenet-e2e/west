@@ -3,13 +3,14 @@
 @Author : songyd, chenhj
 @File   : modeling_whisper_encoder.py
 """
-from typing import Optional, Tuple
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import torch
 from transformers import WhisperConfig
-from transformers.models.whisper.modeling_whisper import WhisperEncoder as HFWhisperEncoder
+from transformers.models.whisper.modeling_whisper import \
+    WhisperEncoder as HFWhisperEncoder
 from transformers.utils import ModelOutput
 
 
@@ -24,7 +25,8 @@ class WhisperOutput(ModelOutput):
 class WhisperEncoder(HFWhisperEncoder):
     """
     overwrite forward to support attention_mask
-    overwrite from_pretrained to support split encoder parameters from pretrained WhisperModel
+    overwrite from_pretrained to support split encoder parameters
+    from pretrained WhisperModel
     """
 
     def from_pretrained(model_path):

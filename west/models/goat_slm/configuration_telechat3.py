@@ -4,7 +4,8 @@
 @File   : configuration_telechat3.py
 """
 # coding=utf-8
-# Copyright 2022 the Big Science Workshop and HuggingFace Inc. team.  All rights reserved.
+# Copyright 2022 the Big Science Workshop and HuggingFace Inc. team.
+# All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +18,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Telechat configuration"""
+# Telechat configuration
 
 from transformers.configuration_utils import PretrainedConfig
 
@@ -97,11 +98,16 @@ class Telechat3Config(PretrainedConfig):
         self.use_cache = use_cache
         self.vocab_size = vocab_size
 
-        if head_dim is not None and head_dim != self.hidden_size // self.num_attention_heads:
+        if (head_dim is not None
+                and head_dim != self.hidden_size // self.num_attention_heads):
             raise ValueError(
-                "head_dim != hidden_size//num_attention_head.Please check the config."
+                "head_dim != hidden_size//num_attention_head. "
+                "Please check the config."
             )
-        self.head_dim = head_dim if head_dim is not None else self.hidden_size // self.num_attention_heads
+        self.head_dim = (
+            head_dim if head_dim is not None
+            else self.hidden_size // self.num_attention_heads
+        )
 
         # Validate the correctness of rotary position embeddings parameters
         # BC: if there is a 'type' field, copy it it to 'rope_type'.

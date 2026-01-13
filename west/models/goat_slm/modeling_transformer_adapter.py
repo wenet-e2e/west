@@ -3,28 +3,21 @@
 @Author : songyd, chenhj
 @File   : modeling_transformer_adapter.py
 """
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 import torch
 from torch import nn
-
 from transformers.activations import ACT2FN
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
-from transformers.generation import GenerationMixin
-from transformers.modeling_attn_mask_utils import AttentionMaskConverter, _prepare_4d_attention_mask
+from transformers.cache_utils import Cache
+from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
-from transformers.modeling_outputs import (
-    BaseModelOutputWithPast, )
+from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
-from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
+from transformers.modeling_utils import (ALL_ATTENTION_FUNCTIONS,
+                                         PreTrainedModel)
 from transformers.processing_utils import Unpack
-from transformers.utils import (
-    add_code_sample_docstrings,
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
-    logging,
-    replace_return_docstrings,
-)
+from transformers.utils import logging
+
 from .configuration_transformer_adapter import AdapterConfig
 
 logger = logging.get_logger(__name__)
@@ -148,7 +141,7 @@ class AdapterAttention(nn.Module):
         self.num_key_value_groups = config.num_attention_heads // config.num_key_value_heads
         self.scaling = self.head_dim**-0.5
         self.attention_dropout = config.attention_dropout
-        self.is_causal = False  #True
+        self.is_causal = False  # True
         self.q_proj = nn.Linear(config.hidden_size,
                                 config.num_attention_heads * self.head_dim,
                                 bias=True)
@@ -526,7 +519,7 @@ class AdapterModel(PreTrainedModel):
             device=device,
             batch_size=input_tensor.shape[0],
         )
-        full_mask1 = full_mask.clone()
+        # full_mask1 = full_mask.clone()
 
         # spda attention_mask
         if (self.config._attn_implementation == "sdpa"

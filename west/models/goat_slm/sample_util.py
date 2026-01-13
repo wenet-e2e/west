@@ -3,9 +3,9 @@
 @Author : songyd, chenhj
 @File   : sample_util.py
 """
-from typing import Optional, Tuple, Union, List
+from typing import Optional, Tuple
+
 import torch
-import numpy as np
 
 
 def multinomial_sample_one_no_sync_ori(probs_sort, index=None):

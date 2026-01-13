@@ -10,6 +10,7 @@ from west.models.touch_asu import TouchASU, TouchASUConfig
 from west.models.touch_chat import TouchChat, TouchChatConfig
 from west.models.touch_flow import TouchFlow, TouchFlowConfig
 from west.models.touch_tts import TouchTTS, TouchTTSConfig
+
 # from west.models.goat_slm import GOATSLMModel, GOATSLMConfig
 
 AutoConfig.register("touch_asu", TouchASUConfig)

@@ -16,7 +16,7 @@ GOAT-SLM has been upgraded to Version 2 (GOAT-SLM2). This repository provides co
     cd GOAT-SLM
     pip install -r requirements.txt
     ```
-  
+
   If flash-attn fails to install, you can execute the following operations separately.
   ``` python
   pip install flash-attn==2.7.4.post1 --no-build-isolation

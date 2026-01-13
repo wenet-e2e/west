@@ -3,8 +3,9 @@
 @Author : songyd, chenhj
 @File   : configuration_goat_slm.py
 """
-from transformers import PretrainedConfig, AutoConfig, WhisperConfig, CONFIG_MAPPING
-from transformers import logging
+from transformers import (CONFIG_MAPPING, PretrainedConfig, WhisperConfig,
+                          logging)
+
 from .configuration_transformer_adapter import AdapterConfig
 from .modeling_telechat3 import Telechat3Config
 
@@ -25,7 +26,8 @@ class GOATSLMConfig(PretrainedConfig):
         if whisper_config is None:
             whisper_config = {}
             logger.info(
-                "whisper config is None. Initializing the WhisperConfig with default values"
+                "whisper config is None. "
+                "Initializing the WhisperConfig with default values"
             )
 
         if llm_config is None:

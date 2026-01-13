@@ -4,29 +4,30 @@
 @File   : chat_demo_goat_slm.py
 """
 import argparse
-import os
-import sys
+import base64
+import datetime
+import io
 import logging
-import uuid
-import numpy as np
-import torch
-import gradio as gr
-from gradio import processing_utils
-from pathlib import Path
+import os
 import tempfile
+import uuid
+from pathlib import Path
 
-sys.path.insert(0, '../../../west')
-sys.path.insert(0, '../../west/models/goat_slm/CosyVoice')
-sys.path.insert(0,
-                '../../west/models/goat_slm/CosyVoice/third_party/Matcha-TTS')
-
-import io, base64
-from transformers import AutoTokenizer, WhisperFeatureExtractor
-from transformers import GenerationConfig
-from west.models.goat_slm import GOATSLMModel
-from west.models.goat_slm import CosyVoice
-import torchaudio
+import gradio as gr
+import numpy as np
 import soundfile as sf
+import torch
+import torchaudio
+from gradio import processing_utils
+from transformers import (AutoTokenizer, GenerationConfig,
+                          WhisperFeatureExtractor)
+
+# import sys
+# sys.path.insert(0, '../../../west')
+# sys.path.insert(0, '../../west/models/goat_slm/CosyVoice')
+# sys.path.insert(0,
+#                 '../../west/models/goat_slm/CosyVoice/third_party/Matcha-TTS')
+from west.models.goat_slm import CosyVoice, GOATSLMModel
 
 generation_config = GenerationConfig(max_new_tokens=512,
                                      min_new_tokens=10,
@@ -40,22 +41,25 @@ generation_config = GenerationConfig(max_new_tokens=512,
                                      repetition_penalty=1.05,
                                      top_k=20)
 dtype = torch.bfloat16
-text_llm_system_prompt = """你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手，隶属于中国电信集团，基于中国电信星辰语义大模型，目标是与用户建立亲密和自然的对话关系，为用户提供温馨、贴心的聊天体验。请准确识别用户的情绪，如开心、难过、生气等，根据用户的情绪做出相应的回应，在用户感到难过时提供安慰，在用户开心时分享喜悦。"""
+text_llm_system_prompt = (
+    "你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手，"
+    "隶属于中国电信集团，基于中国电信星辰语义大模型，"
+    "目标是与用户建立亲密和自然的对话关系，为用户提供温馨、贴心的聊天体验。"
+    "请准确识别用户的情绪，如开心、难过、生气等，根据用户的情绪做出相应的回应，"
+    "在用户感到难过时提供安慰，在用户开心时分享喜悦。"
+)
 
 
 def load_wav(wav, target_sr, device=None):
     speech, sample_rate = torchaudio.load(wav)
     speech = speech.mean(dim=0, keepdim=True)
     if sample_rate != target_sr:
-        assert device is not None, f'device is None!!!'
+        assert device is not None, 'device is None!!!'
         speech = speech.to(device=device)
-        # assert sample_rate > target_sr, 'wav sample rate {} must be greater than {}'.format(sample_rate, target_sr)
         speech = torchaudio.transforms.Resample(
             orig_freq=sample_rate, new_freq=target_sr).cuda()(speech)
     return speech[:, :int(target_sr * 30)].cpu()
 
-
-import datetime
 
 pre_save_file = "./result/chat/wavs"
 os.makedirs(pre_save_file, exist_ok=True)
@@ -114,7 +118,6 @@ class ChatHistory(object):
 
     def add_text_history(self, text):
         input_ids = self.tokenizer(text, return_tensors="pt").input_ids.cuda()
-        # print("input_ids:", self.tokenizer.decode(input_ids.cpu().tolist()[0]))
         self.history.append((input_ids, ))
 
     def add_audio(self, audio_file):
@@ -155,7 +158,7 @@ def parse_args():
                         default=None,
                         help="Root path to the goat_slm",
                         required=True)
-    ### args for generation
+    # args for generation
     parser.add_argument("--max_new_tokens",
                         type=int,
                         default=512,
@@ -191,7 +194,7 @@ def parse_args():
 print('Initializing Chat')
 args = parse_args()
 Path(args.cache_dir).mkdir(parents=True, exist_ok=True)
-# ************************************************** custom params *****************************************
+# ************************* custom params *************************
 enable_thinking = args.enable_thinking
 max_speech_unit_length = 50 * 50
 is_speech_generate_run = args.is_speech_generate_run
@@ -225,11 +228,16 @@ generation_config.update(
         "eos_token_id": tokenizer.eos_token_id  # 151645 #
     })
 speech_llm_system_prompt = "You are a helpful assistant."
-speech_llm_prefix = f"<_system>{speech_llm_system_prompt}\n" if Y_model.config.model_type == 'GOAT-SLM2-1.8B' else f"<|im_start|>system\n{speech_llm_system_prompt}<|im_end|>\n"
+if Y_model.config.model_type == 'GOAT-SLM2-1.8B':
+    speech_llm_prefix = f"<_system>{speech_llm_system_prompt}\n"
+else:
+    speech_llm_prefix = (
+        f"<|im_start|>system\n{speech_llm_system_prompt}<|im_end|>\n"
+    )
 speech_llm_input_ids = tokenizer.encode(speech_llm_prefix)
 
 
-# ************************************************** flow + vocoder *****************************************
+# ************************* flow + vocoder *************************
 def init_cosyvoice(model_path):
     cosyvoice_model = CosyVoice(model_path, load_jit=False)
     return cosyvoice_model
@@ -239,10 +247,12 @@ reference_audio = './data/goat_slm_reference_speech.wav'
 reference_speech_16k = load_wav(reference_audio, 16000, 'cuda')
 reference_speech_22050 = load_wav(reference_audio, 22050, 'cuda')
 cosyvoice = init_cosyvoice(f"{args.slm_model_path}/CosyVoice-300M-SFT")
-flow_prompt_speech_token, reference_speech_token_len = cosyvoice.frontend._extract_speech_token(
-    reference_speech_16k)  # [bs, t2]
-prompt_speech_feat, reference_speech_feat_len = cosyvoice.frontend._extract_speech_feat(
-    reference_speech_22050)  # [bs, t1, 80]
+flow_prompt_speech_token, reference_speech_token_len = (
+    cosyvoice.frontend._extract_speech_token(reference_speech_16k)
+)  # [bs, t2]
+prompt_speech_feat, reference_speech_feat_len = (
+    cosyvoice.frontend._extract_speech_feat(reference_speech_22050)
+)  # [bs, t1, 80]
 embedding = cosyvoice.frontend._extract_spk_embedding(reference_speech_16k)
 
 
@@ -284,7 +294,6 @@ def gradio_reset(chatbot, sys_prompt):
     history.audio_file = []
     history.add_sys_prompt(sys_prompt)
     return chatbot
-    # return chatbot, gr.update(value="", interactive=True), gr.update(value=None, interactive=True), gr.update(value=None, interactive=True), gr.update(value=None, interactive=True)
 
 
 def save_text(file_path, text):
@@ -304,22 +313,22 @@ def gradio_answer(chatbot, enable_thinking, is_his_empty_think,
     # max_turn_num = args.max_turn_num
     cur_turn_num = 0
     print(
-        '************************* print history start: ******************************'
+        '******************** print history start: ********************'
     )
     for h in history.history:
         if len(h) == 1:
-            ### text
+            # text
             input_ids = h[0]
             text = tokenizer.decode(input_ids.cpu().tolist()[0])
             print(f"text:{text}", end='')
             if '<|im_start|>user' in text or '<_user>' in text:
                 cur_turn_num += 1
         elif len(h) == 2:
-            ### speech
-            speech_values, speech_attention_mask = h[0], h[1]
+            # speech
+            speech_values, _ = h[0], h[1]
             print(f"speech: {speech_values.size()}", end='')
     print(
-        '************************* print history end!! ******************************'
+        '******************** print history end!! ********************'
     )
 
     text_tokens, speech_units = Y_model.chat(
@@ -336,7 +345,8 @@ def gradio_answer(chatbot, enable_thinking, is_his_empty_think,
     # 清除speech history
     # del history.history[-2]
     if is_his_empty_think and '</think>\n' in response:
-        # response_wo_think = '<think>\n\n</think>\n\n' + response.split('</think>\n\n')[-1]
+        # response_wo_think = '<think>\n\n</think>\n\n' + \
+        #     response.split('</think>\n\n')[-1]
         response_wo_think = response.split('</think>\n')[-1]
         history.add_text_history(response_wo_think + "\n")
     else:
@@ -356,7 +366,8 @@ def gradio_answer(chatbot, enable_thinking, is_his_empty_think,
                                 or '上海' in response):
             output_units = output_units[17:]  # + output_units[]
         print(
-            f"response text len: {len(text_tokens[0])}, unit len: {len(output_units)//4}"
+            f"response text len: {len(text_tokens[0])}, "
+            f"unit len: {len(output_units)//4}"
         )
         wav_full = unit_to_wav([output_units])
 
@@ -395,7 +406,10 @@ def gradio_answer(chatbot, enable_thinking, is_his_empty_think,
 
 
 title = """<h1 align="center">GOAT-SLM</h1>"""
-description = """<h3>This is the demo of GOAT-SLM. Upload your audios and start chatting!</h3>"""
+description = (
+    """<h3>This is the demo of GOAT-SLM. """
+    """Upload your audios and start chatting!</h3>"""
+)
 
 
 def add_text(chatbot, user_message, enable_thinking, model_type):
@@ -406,8 +420,11 @@ def add_text(chatbot, user_message, enable_thinking, model_type):
     if model_type == 'GOAT-SLM2-1.8B':
         user_message = "<_user>" + user_message + "<_bot>"
     else:
-        user_message = "<|im_start|>user\n" + user_message + "<|im_end|>\n<|im_start|>assistant\n"
-        if enable_thinking == False:
+        user_message = (
+            "<|im_start|>user\n" + user_message +
+            "<|im_end|>\n<|im_start|>assistant\n"
+        )
+        if not enable_thinking:
             user_message += '<think>\n\n</think>\n\n'
     history.add_text_history(user_message)
     return chatbot, gr.update(value="", interactive=False)
@@ -416,13 +433,13 @@ def add_text(chatbot, user_message, enable_thinking, model_type):
 def add_file(chatbot, gr_audio, enable_thinking, model_type):
     print(f'gr_audio.name: {gr_audio.name}')
     if model_type == 'GOAT-SLM2-1.8B':
-        history.add_text_history(f"<_user>")
+        history.add_text_history("<_user>")
         user_message = "<_bot>"
     else:
         history.add_text_history(
-            f"<|im_start|>user\n")  # f"<|im_start|>user\n{transcription}"
+            "<|im_start|>user\n")  # f"<|im_start|>user\n{transcription}"
         user_message = "<|im_end|>\n<|im_start|>assistant\n"
-        if enable_thinking == False:
+        if not enable_thinking:
             user_message += '<think>\n\n</think>\n\n'
     history.add_audio(gr_audio.name)
     history.add_speech_history(history.audio_file[-1])
@@ -443,13 +460,13 @@ def add_micophone_file(chatbot, gr_audio_mic, enable_thinking, model_type):
         print(f'gr_audio_mic_wav: {gr_audio_mic_wav}')
 
         if model_type == 'GOAT-SLM2-1.8B':
-            history.add_text_history(f"<_user>")
+            history.add_text_history("<_user>")
             user_message = "<_bot>"
         else:
             history.add_text_history(
-                f"<|im_start|>user\n")  # # f"<|im_start|>user\n{transcription}"
+                "<|im_start|>user\n")  # # f"<|im_start|>user\n{transcription}"
             user_message = "<|im_end|>\n<|im_start|>assistant\n"
-            if enable_thinking == False:
+            if not enable_thinking:
                 user_message += '<think>\n\n</think>\n\n'
 
         history.add_audio(gr_audio_mic_wav)
@@ -551,7 +568,8 @@ with gr.Blocks() as demo:
             is_speech_generate_run, do_sample, max_turn_num, max_new_tokens,
             sys_prompt
         ], [chatbot])
-    # clear.click(gradio_reset, [chatbot, sys_prompt], [chatbot, txt, input_audio_mic, btn], queue=False)
+    # clear.click(gradio_reset, [chatbot, sys_prompt],
+    #             [chatbot, txt, input_audio_mic, btn], queue=False)
     clear.click(gradio_reset, [chatbot, sys_prompt], [chatbot], queue=False)
 
 demo.queue().launch(

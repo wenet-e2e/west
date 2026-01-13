@@ -4,10 +4,10 @@
 
 # prepare the wav.scp & gt.jsonl for compute wer.
 
-import sys
 import json
 import os
 import re
+import sys
 
 from tn.english.normalizer import Normalizer as EnNormalizer
 

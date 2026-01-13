@@ -1,3 +1,5 @@
+# ruff: noqa: E501
+# flake8: noqa: E501
 # coding=utf-8
 # Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
 #
@@ -18,12 +20,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Callable, Optional, Union, Tuple
+from typing import Callable, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
-
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.configuration_utils import PretrainedConfig
@@ -32,20 +33,21 @@ from transformers.integrations import use_kernel_forward_from_hub
 from transformers.masking_utils import create_causal_mask
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_layers import GradientCheckpointingLayer
-from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
-    CausalLMOutputWithPast,
-    QuestionAnsweringModelOutput,
-    SequenceClassifierOutputWithPast,
-    TokenClassifierOutput,
-)
-from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS, dynamic_rope_update
-from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
+from transformers.modeling_outputs import (BaseModelOutputWithPast,
+                                           CausalLMOutputWithPast,
+                                           QuestionAnsweringModelOutput,
+                                           SequenceClassifierOutputWithPast,
+                                           TokenClassifierOutput)
+from transformers.modeling_rope_utils import (ROPE_INIT_FUNCTIONS,
+                                              dynamic_rope_update)
+from transformers.modeling_utils import (ALL_ATTENTION_FUNCTIONS,
+                                         PreTrainedModel)
 from transformers.processing_utils import Unpack
-from transformers.utils import LossKwargs, auto_docstring, can_return_tuple, logging
+from transformers.utils import (LossKwargs, auto_docstring, can_return_tuple,
+                                logging)
 
-from .generation_utils import GenerationWithCE
 from .configuration_telechat3 import Telechat3Config
+from .generation_utils import GenerationWithCE
 
 logger = logging.get_logger(__name__)
 
