@@ -2,6 +2,11 @@ set(ONNX_VERSION "1.13.1")
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
   set(ONNX_URL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-win-x64-${ONNX_VERSION}.zip")
   set(URL_HASH "SHA256=cd8318dc30352e0d615f809bd544bfd18b578289ec16621252b5db1994f09e43")
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Android")
+  # Android: use onnxruntime-android AAR, extract native libs
+  set(ONNX_URL "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ONNX_VERSION}/onnxruntime-android-${ONNX_VERSION}.aar")
+  set(URL_HASH "SHA256=")  # AAR hash varies, skip verification
+  set(ONNX_IS_ANDROID TRUE)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
     set(ONNX_URL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-aarch64-${ONNX_VERSION}.tgz")
@@ -19,16 +24,35 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     set(URL_HASH "SHA256=32f3fff17b01db779e9e3cbe32f27adba40460e6202a79dfd1ac76b4f20588ef")
   endif()
 else()
-  message(FATAL_ERROR "Unsupported CMake System Name '${CMAKE_SYSTEM_NAME}' (expected 'Windows', 'Linux' or 'Darwin')")
+  message(FATAL_ERROR "Unsupported CMake System Name '${CMAKE_SYSTEM_NAME}' (expected 'Windows', 'Linux', 'Darwin' or 'Android')")
 endif()
 
-FetchContent_Declare(onnxruntime
-  URL ${ONNX_URL}
-  URL_HASH ${URL_HASH}
-)
-FetchContent_MakeAvailable(onnxruntime)
-include_directories(${onnxruntime_SOURCE_DIR}/include)
-link_directories(${onnxruntime_SOURCE_DIR}/lib)
+if(ONNX_IS_ANDROID)
+  # For Android, download and extract AAR
+  FetchContent_Declare(onnxruntime
+    URL ${ONNX_URL}
+  )
+  FetchContent_MakeAvailable(onnxruntime)
+  # AAR is a zip file, native libs are in jni/ folder
+  include_directories(${onnxruntime_SOURCE_DIR}/headers)
+  if(ANDROID_ABI STREQUAL "arm64-v8a")
+    link_directories(${onnxruntime_SOURCE_DIR}/jni/arm64-v8a)
+  elseif(ANDROID_ABI STREQUAL "armeabi-v7a")
+    link_directories(${onnxruntime_SOURCE_DIR}/jni/armeabi-v7a)
+  elseif(ANDROID_ABI STREQUAL "x86_64")
+    link_directories(${onnxruntime_SOURCE_DIR}/jni/x86_64)
+  elseif(ANDROID_ABI STREQUAL "x86")
+    link_directories(${onnxruntime_SOURCE_DIR}/jni/x86)
+  endif()
+else()
+  FetchContent_Declare(onnxruntime
+    URL ${ONNX_URL}
+    URL_HASH ${URL_HASH}
+  )
+  FetchContent_MakeAvailable(onnxruntime)
+  include_directories(${onnxruntime_SOURCE_DIR}/include)
+  link_directories(${onnxruntime_SOURCE_DIR}/lib)
+endif()
 
 if(MSVC)
   file(GLOB ONNX_DLLS "${onnxruntime_SOURCE_DIR}/lib/*.dll")
