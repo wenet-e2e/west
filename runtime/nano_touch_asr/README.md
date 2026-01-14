@@ -7,7 +7,7 @@ On-device, LLM based, streaming speech recognition solution.
 ``` bash
 cmake -B build
 cmake --build build
-
+```
 
 ## How to Run?
 
