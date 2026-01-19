@@ -67,6 +67,8 @@ bash run_flow.sh --stage decode
 
 ## Results
 
-| LLM        | WER (%) | #SUB | #INS + DEL | SS     | Details                                   |
-|------------|---------|------|------------|--------|-------------------------------------------|
-| Qwen2-0.5B | 5.15    | 217  | 92         |  0.847 |LLM: 8 A800 GPUs, pack 20000, 40000 steps<br>Flow: 8 3090 GPUs, batch 64, 50000 steps  |
+| LLM        | Tokenizer                  | WER (%) | #N   | #SUB | #INS + DEL | SS     | Details                                                                 |
+|------------|----------------------------|---------|------|------|------------|--------|-------------------------------------------------------------------------|
+| Qwen2-0.5B | speech_tokenizer_v1_25hz   | 5.56    | 5894 | 269  | 59         | 0.834  | LLM: 8 A800 GPUs, pack 20000, 40000 steps<br>Flow: 8 A800 GPUs, batch 32, 18000 steps |
+| Qwen2-0.5B | speech_tokenizer_v2_25hz   | 3.87    | 5894 | 172  | 56         | 0.824  | LLM: 8 A800 GPUs, pack 20000, 40000 steps<br>Flow: 8 A800 GPUs, batch 32, 18000 steps |
+| Qwen2-0.5B | speech_tokenizer_v3_25hz   | 3.55    | 5894 | 161  | 48         | 0.837  | LLM: 8 A800 GPUs, pack 20000, 40000 steps<br>Flow: 8 A800 GPUs, batch 32, 18000 steps |

@@ -11,7 +11,8 @@ class TouchFlowConfig(PretrainedConfig):
     def __init__(
         self,
         llm_model_name_or_path: str = '',
-        s3tokenizer_model_name_or_path: str = '',
+        s3tokenizer_download_dir: str = '',
+        s3tokenizer_model_name: str = '',
         speaker_model_path: Optional[str] = '',
         text_tokenizer_path: Optional[str] = '',
         num_speech_tokens: int = 4096,
@@ -34,7 +35,8 @@ class TouchFlowConfig(PretrainedConfig):
     ):
         super().__init__(**kwargs)
         self.llm_model_name_or_path = llm_model_name_or_path
-        self.s3tokenizer_model_name_or_path = s3tokenizer_model_name_or_path
+        self.s3tokenizer_download_dir = s3tokenizer_download_dir
+        self.s3tokenizer_model_name = s3tokenizer_model_name
         self.speaker_model_path = speaker_model_path
         self.text_tokenizer_path = text_tokenizer_path
         self.num_speech_tokens = num_speech_tokens

@@ -17,7 +17,7 @@ en_tn_model = EnNormalizer(overwrite_cache=False)
 # normalize the text & keep english characters only.
 def normalize_text(text):
     text = en_tn_model.normalize(text)
-    text = re.sub(r"[^a-zA-Z0-9]", " ", text)
+    text = re.sub(r"[^a-zA-Z0-9']", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 

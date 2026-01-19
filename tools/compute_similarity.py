@@ -7,7 +7,7 @@ import sys
 import wespeaker
 
 # https://wenet.org.cn/downloads?models=wespeaker&version=campplus_cn_common_200k.tar.gz # noqa
-model = wespeaker.load_model_pt("campplus")
+model = wespeaker.load_model("campplus")
 
 prompts = {}
 with open(sys.argv[1]) as f:

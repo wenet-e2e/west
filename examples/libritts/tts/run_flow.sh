@@ -9,7 +9,7 @@ num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F ',' '{print NF}')
 
 stage=train
 data=data
-dir=exp/touch_flow-Qwen2.5-0.5B-Audio-libritts
+dir=exp/touch_flow-Qwen2.5-0.5B-Audio-FSQ_v3_25hz-libritts
 steps=50000  # training steps
 
 . tools/parse_options.sh

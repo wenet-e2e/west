@@ -9,7 +9,8 @@ class TouchTTSConfig(PretrainedConfig):
     def __init__(
         self,
         llm_model_name_or_path: str = 'Qwen/Qwen2-7B',
-        s3tokenizer_model_name_or_path: str = '',
+        s3tokenizer_download_dir: str = '',
+        s3tokenizer_model_name: str = '',
         num_speech_tokens: int = 4096,
         hidden_size: int = 0,
         max_speech_duration: float = 60,
@@ -18,7 +19,8 @@ class TouchTTSConfig(PretrainedConfig):
     ):
         super().__init__(**kwargs)
         self.llm_model_name_or_path = llm_model_name_or_path
-        self.s3tokenizer_model_name_or_path = s3tokenizer_model_name_or_path
+        self.s3tokenizer_download_dir = s3tokenizer_download_dir
+        self.s3tokenizer_model_name = s3tokenizer_model_name
         self.num_speech_tokens = num_speech_tokens
         self.hidden_size = hidden_size
         self.max_speech_duration = max_speech_duration

@@ -1,7 +1,8 @@
 {
-  "llm_model_name_or_path": "Qwen/Qwen2.5-0.5B-Audio",
+  "llm_model_name_or_path": "Qwen/Qwen2.5-0.5B-Audio-FSQ",
   "model_type": "touch_tts",
   "transformers_version": "4.52.3",
-  "num_speech_tokens": 4096,
-  "s3tokenizer_model_name_or_path": "s3tokenizer"
+  "num_speech_tokens": 6561,
+  "s3tokenizer_download_dir": "s3tokenizer",
+  "s3tokenizer_model_name": "speech_tokenizer_v3_25hz"
 }
