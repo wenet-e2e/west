@@ -13,6 +13,9 @@ dir=exp/touch_tts-Qwen2.5-0.5B-Audio-FSQ_v3_25hz-libritts
 
 steps=50000  # training steps
 
+model_conf=conf/touch_tts_config.json
+decode_conf=conf/generation_config.json
+
 . tools/parse_options.sh
 
 if [ $stage == "data" ] || [ $stage == "all" ]; then
@@ -22,7 +25,7 @@ fi
 if [ $stage == "train" ] || [ $stage == "all" ]; then
     echo "Training..."
     torchrun --standalone --nnodes=1 --nproc_per_node=$num_gpus west/bin/train.py \
-        --model_config_or_dir conf/touch_tts_config.json \
+        --model_config_or_dir $model_conf \
         --data_path $data/train.jsonl \
         --output_dir $dir \
         --pack_size 20000 \
@@ -54,7 +57,7 @@ if [ $stage == "decode" ] || [ $stage == "all" ]; then
     echo "Decoding..."
     test_jsonl=$data/libritts/test.jsonl
     mdir=$dir/checkpoint-${steps}
-
+    cp $decode_conf $mdir
     testset_name=$(basename ${test_jsonl})
     llm_model_name=$(basename $dir)
     llm_checkpoint_name=$(basename $mdir)
