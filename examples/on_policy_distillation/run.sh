@@ -13,85 +13,88 @@ stage=train
 
 . tools/parse_options.sh
 
-deepspeed_config=conf/ds_zero3_omni.json
-run_name=grpo_qwen_omni_7b
-prompt_template=default
+deepspeed_config=conf/ds_zero1.json
+run_name=on_policy_distillation_qwen_omni_3b
+prompt_template=caption
 dir=exp/${run_name}
 
-model_name_or_path=${MODEL_NAME_OR_PATH:-models/Qwen2.5-Omni-7B}
+model_name_or_path=${MODEL_NAME_OR_PATH:-models/Qwen2.5-Omni-3B}
+teacher_model_name_or_path=${TEACHER_MODEL_NAME_OR_PATH:-models/Qwen3-Omni-30B-A3B-Captioner}
 avqa_hf_dataset_path=${AVQA_HF_DATASET_PATH:-data/avqa-processed}
-mmsu_hf_dataset_path=${MMSU_HF_DATASET_PATH:-data/MMSU_hf}
 mmau_test_mini_data_dir=${MMAU_TEST_MINI_DATA_DIR:-data/MMAU} # This path is hardcoded in the scripts/download_mmau_test.sh.
 
 if [ $stage == "prepare" ]; then
     echo "Prepare required data and models"
-    huggingface-cli download yuantuo666/MMSU-full_5k_hf_format.v0 --local-dir ${mmsu_hf_dataset_path} --repo-type dataset
     huggingface-cli download gijs/avqa-processed --local-dir ${avqa_hf_dataset_path} --repo-type dataset
 
-    huggingface-cli download Qwen/Qwen2.5-Omni-7B --local-dir ${model_name_or_path}
-    # Qwen/Qwen2-Audio-7B-Instruct, Qwen/Qwen2.5-Omni-3B
+    huggingface-cli download Qwen/Qwen2.5-Omni-3B --local-dir ${model_name_or_path}
+    huggingface-cli download Qwen/Qwen3-Omni-30B-A3B-Captioner --local-dir ${teacher_model_name_or_path}
 
     bash scripts/download_mmau_test.sh
 fi
 
+if [ $stage == "vllm_teacher" ]; then
+    # on another machine
+    vllm serve ./Qwen3-Omni-30B-A3B-Captioner \
+        --served-model-name Qwen3-Omni-30B-A3B-Captioner \
+        --port 9999 \
+        --enable-log-requests \
+        --max-logprobs 128 \
+        --enable-log-outputs \
+        --max-num-seqs 32 \
+        --tensor-parallel-size 4 \
+        --trust-remote-code
+fi
+
 if [ $stage == "train" ]; then
+    teacher_model_name_or_path=http://your-teacher-machine-ip:9999/v1
     torchrun --nproc_per_node=${num_gpus} \
         --nnodes=1 \
         --node-rank=0 \
         --master_addr=127.0.0.1 \
         --master_port=32778 \
-        west/bin/train_grpo.py \
+        west/bin/train_knowledge_distillation.py \
         --deepspeed ${deepspeed_config} \
         --model_name_or_path ${model_name_or_path} \
+        --teacher_model_name_or_path ${teacher_model_name_or_path} \
         --output_dir ${dir} \
         --hf_dataset_path ${avqa_hf_dataset_path} \
         --run_name ${run_name} \
         --template ${prompt_template} \
-        --temperature 0.7 \
-        --num_generations 4 \
-        --max_completion_length 1024 \
+        --save_steps 100 \
+        --num_generations 1 \
         --use_wandb true || exit 1
 fi
 
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
-if [ $stage == "mmau" ]; then
-    # For Qwen2_audio we need to restrict the audio duration to 30 seconds.
-    # max_audio_duration_in_seconds=30
-    iters=(100)
+export LLM_API_KEY=sk-**** # TODO: replace with your own API key
+if [ $stage == "decode" ]; then
+    iters=(100 200 300)
+    temperature=0.0
     batch_size=32
     for iter in ${iters[*]}; do
         model_dir=${dir}/checkpoint-${iter}
-        out_dir=${dir}/mmau_test_mini_checkpoint_${iter}_template_${prompt_template}
+        out_dir=${dir}/caption_test_mini_checkpoint_${iter}_temperature_${temperature}
+        mkdir -p ${out_dir}
 
         python3 west/bin/decode_mmau.py \
         --model_path ${model_dir} \
         --data_file ${mmau_test_mini_data_dir}/mmau-test-mini.json \
         --audio_dir ${mmau_test_mini_data_dir} \
-        --out_file ${out_dir}/res_mmau_mini.json \
+        --out_file ${out_dir}/caption_mmau_mini.json \
         --template ${prompt_template} \
-        --max_audio_duration_in_seconds 30 \
+        --temperature ${temperature} \
         --batch_size ${batch_size} || exit 1
+
+        python3 cascaded_audio_capiton_llm_eval.py \
+        --input_file ${out_dir}/caption_mmau_mini.json \
+        --output_file ${out_dir}/res_mmau_mini.json \
+        --temperature ${temperature} \
+        --api_key ${LLM_API_KEY} \
+        --max_tokens 256 || exit 1
 
         python3 ${mmau_test_mini_data_dir}/evaluation.py \
         --input ${out_dir}/res_mmau_mini.json \
         > ${out_dir}/eval_mmau_mini.txt || exit 1
-    done
-fi
-
-if [ $stage == "mmsu" ]; then
-    iters=(100)
-    batch_size=32
-    # For Qwen2_audio we need to restrict the audio duration to 30 seconds.
-    # --max_audio_duration_in_seconds 30
-    for iter in ${iters[*]}; do
-        model_dir=${dir}/checkpoint-${iter}
-        out_dir=${dir}/mmsu_checkpoint_${iter}_vllm_template_${prompt_template}
-        python3 west/bin/decode_mmsu.py \
-        --model_path ${model_dir} \
-        --hf_dataset_path ${mmsu_hf_dataset_path} \
-        --out_file ${out_dir}/res_mmsu.json \
-        --template ${prompt_template} --force \
-        --max_audio_duration_in_seconds 30 \
-        --batch_size ${batch_size} || exit 1
     done
 fi

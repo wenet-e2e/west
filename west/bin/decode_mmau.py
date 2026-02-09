@@ -56,7 +56,7 @@ def parse_args():
     parser.add_argument("--temperature", type=float, default=0.0, help="temperature for generation")
     parser.add_argument("--max_audio_duration_in_seconds", type=int, default=30, help="max audio duration in seconds")
     parser.add_argument(
-        "--template", type=str, default="default", choices=["default", "think", "new"], help="prompt template type"
+        "--template", type=str, default="default", choices=["default", "think", "new", "caption"], help="prompt type"
     )
     return parser.parse_args()
 
