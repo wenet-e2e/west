@@ -1,4 +1,4 @@
-"""On-Policy Knowledge Distillation training script for Qwen2-Audio models.
+"""On-Policy Knowledge Distillation training script for Audio LLM models.
 
 This script implements on-policy knowledge distillation where:
 1. Student model generates completions
@@ -19,10 +19,8 @@ from west.dataset.hf_dataset import HFAudioDataset
 from west.trainer.kd_trainer import (KnowledgeDistillationTrainer,
                                      RemoteKnowledgeDistillationTrainer)
 from west.utils.constants import TEMPLATE_MAP
-from west.utils.rewards import (accuracy_reward,
-                                caption_llm_cascaded_qa_reward,
-                                format_reward_answer, format_reward_think,
-                                format_reward_think_end)
+from west.utils.rewards import (accuracy_reward, format_reward,
+                                format_reward_answer, format_reward_think)
 
 
 def is_url(path: str) -> bool:
@@ -126,7 +124,7 @@ class CustomTrainingArguments(TrainingArguments):
         metadata={"help": "Reporting integrations"},
     )
     run_name: str = field(
-        default="AQA-GRPO",
+        default="on_policy_distillation",
         metadata={"help": "Run name for logging"},
     )
 
@@ -161,7 +159,7 @@ def main():
     logging.info(f"Training arguments: {args}")
 
     logging.info(f"Loading model from: {args.model_name_or_path}")
-    if "Qwen2-Audio-7B-Instruct" in args.model_name_or_path or 'r1-aqa' in args.model_name_or_path:
+    if "Qwen2-Audio-7B-Instruct" in args.model_name_or_path:
         model = Qwen2AudioForConditionalGeneration.from_pretrained(args.model_name_or_path)
     elif "Qwen2.5-Omni" in args.model_name_or_path:
         model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
@@ -211,12 +209,11 @@ def main():
     )
     # Reward functions for monitoring (not used in loss, only for logging)
     if args.template == "default":
-        # reward_funcs = [accuracy_reward, format_reward]
-        reward_funcs = [accuracy_reward, format_reward_answer]
+        reward_funcs = [accuracy_reward, format_reward]
     elif args.template == "think":
         reward_funcs = [accuracy_reward, format_reward_answer, format_reward_think]
     elif args.template == "caption":
-        reward_funcs = [caption_llm_cascaded_qa_reward, format_reward_think_end]
+        reward_funcs = None
     else:
         raise ValueError(f"Template {args.template} not supported")
 

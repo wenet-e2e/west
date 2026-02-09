@@ -283,41 +283,6 @@ class KnowledgeDistillationTrainer(Trainer):
             "feature_attention_mask": prompt_processed["feature_attention_mask"].to(device),
         }, prompt_length
 
-    def _compute_forward_kl(
-        self,
-        student_logits: torch.Tensor,
-        teacher_logits: torch.Tensor,
-        mask: torch.Tensor,
-        temperature: float = 1.0,
-    ) -> torch.Tensor:
-        """Compute forward KL divergence: KL(teacher || student).
-
-        This is the standard knowledge distillation loss where student
-        learns to match teacher's distribution.
-
-        Args:
-            student_logits: Student model logits [batch, seq_len, vocab_size]
-            teacher_logits: Teacher model logits [batch, seq_len, vocab_size]
-            mask: Mask for valid tokens [batch, seq_len]
-            temperature: Temperature for softening distributions
-
-        Returns:
-            per_token_kl: KL divergence per token [batch, seq_len]
-        """
-        # Apply temperature
-        student_logits = student_logits / temperature
-        teacher_logits = teacher_logits / temperature
-
-        # Compute log probabilities
-        student_log_probs = F.log_softmax(student_logits, dim=-1)
-        teacher_log_probs = F.log_softmax(teacher_logits, dim=-1)
-        teacher_probs = F.softmax(teacher_logits, dim=-1)
-
-        # KL(teacher || student) = sum_x p_teacher(x) * (log p_teacher(x) - log p_student(x))
-        per_token_kl = (teacher_probs * (teacher_log_probs - student_log_probs)).sum(dim=-1)
-
-        return per_token_kl
-
     def _compute_reverse_kl(
         self,
         student_logits: torch.Tensor,
@@ -394,50 +359,6 @@ class KnowledgeDistillationTrainer(Trainer):
 
         # KL(student || teacher) over top-k tokens
         per_token_kl = (student_topk_probs * (student_topk_log_probs - teacher_topk_log_probs)).sum(dim=-1)
-
-        return per_token_kl
-
-    def _compute_topk_forward_kl(
-        self,
-        student_logits: torch.Tensor,
-        teacher_logits: torch.Tensor,
-        mask: torch.Tensor,
-        topk: int = 64,
-        temperature: float = 1.0,
-    ) -> torch.Tensor:
-        """Compute forward KL divergence using teacher's top-k tokens.
-
-        For forward KL: KL(teacher || student), we use teacher's probability as weights,
-        so we should select top-k based on teacher's distribution.
-
-        Args:
-            student_logits: Student model logits [batch, seq_len, vocab_size]
-            teacher_logits: Teacher model logits [batch, seq_len, vocab_size]
-            mask: Mask for valid tokens [batch, seq_len]
-            topk: Number of top tokens to consider
-            temperature: Temperature for softening distributions
-
-        Returns:
-            per_token_kl: KL divergence per token [batch, seq_len]
-        """
-        # Apply temperature
-        student_logits = student_logits / temperature
-        teacher_logits = teacher_logits / temperature
-
-        # For forward KL, use TEACHER's top-k indices (matches the weighting in KL formula)
-        _, teacher_topk_indices = torch.topk(teacher_logits, k=topk, dim=-1)  # [B, seq, k]
-
-        # Gather student and teacher logits for teacher's top-k tokens
-        student_topk_logits = torch.gather(student_logits, dim=-1, index=teacher_topk_indices)
-        teacher_topk_logits = torch.gather(teacher_logits, dim=-1, index=teacher_topk_indices)
-
-        # Compute probabilities over top-k (re-normalized)
-        student_topk_log_probs = F.log_softmax(student_topk_logits, dim=-1)
-        teacher_topk_log_probs = F.log_softmax(teacher_topk_logits, dim=-1)
-        teacher_topk_probs = F.softmax(teacher_topk_logits, dim=-1)
-
-        # KL(teacher || student) over top-k tokens
-        per_token_kl = (teacher_topk_probs * (teacher_topk_log_probs - student_topk_log_probs)).sum(dim=-1)
 
         return per_token_kl
 
@@ -952,56 +873,6 @@ class RemoteKnowledgeDistillationTrainer(KnowledgeDistillationTrainer):
             "seq_len": len(actual_ids),
         }
 
-    def _filter_rollout_with_rewards(
-        self,
-        generated_strs: list[str],
-        generated_ids: torch.Tensor,
-        generated_mask: torch.Tensor,
-        rewards_per_func: Optional[torch.Tensor],
-    ) -> tuple[list[str], torch.Tensor, torch.Tensor]:
-        """Filter rollout results to keep only the best hypothesis per sample.
-
-        For each original sample in the batch, select the generation with the
-        highest total reward. If multiple generations have the same highest
-        reward, select the first one.
-
-        Args:
-            generated_strs: List of generated strings [batch * num_generations]
-            generated_ids: Tensor of generated token ids [batch * num_generations, seq_len]
-            generated_mask: Mask for valid generated tokens [batch * num_generations, seq_len]
-            rewards_per_func: Rewards from each reward function [batch * num_generations, num_funcs]
-                             or None if no reward functions
-
-        Returns:
-            Filtered (generated_strs, generated_ids, generated_mask) with shape [batch, ...]
-        """
-        if rewards_per_func is None or self.num_generations == 1:
-            return generated_strs, generated_ids, generated_mask
-
-        # Compute total rewards by summing across all reward functions
-        total_rewards = rewards_per_func.sum(dim=1)  # [batch * num_generations]
-
-        # Reshape to [batch, num_generations]
-        batch_size = len(generated_strs) // self.num_generations
-        total_rewards_reshaped = total_rewards.view(batch_size, self.num_generations)
-
-        # Find the index of the best hypothesis for each sample
-        # argmax returns the first index in case of ties
-        best_indices = total_rewards_reshaped.argmax(dim=1)  # [batch]
-
-        # Compute absolute indices into the flattened arrays
-        batch_indices = torch.arange(batch_size, device=best_indices.device)
-        absolute_indices = batch_indices * self.num_generations + best_indices
-
-        # Filter generated_strs
-        filtered_strs = [generated_strs[idx.item()] for idx in absolute_indices]
-
-        # Filter generated_ids and generated_mask
-        filtered_ids = generated_ids[absolute_indices]
-        filtered_mask = generated_mask[absolute_indices]
-
-        return filtered_strs, filtered_ids, filtered_mask
-
     def _compute_reverse_kl_with_teacher_topk(
         self,
         student_logits: torch.Tensor,
@@ -1057,9 +928,6 @@ class RemoteKnowledgeDistillationTrainer(KnowledgeDistillationTrainer):
 
         # Compute rewards for monitoring
         rewards_per_func = self._compute_rewards(generated_strs, meta_data)
-
-        if self.num_generations > 1:
-            generated_strs, generated_ids, generated_mask = self._filter_rollout_with_rewards(generated_strs, generated_ids, generated_mask, rewards_per_func)  # noqa: E501
 
         device = self.accelerator.device
         batch_size = len(generated_strs)
