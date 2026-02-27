@@ -86,7 +86,7 @@ if [ $stage == "decode" ]; then
         --temperature ${temperature} \
         --batch_size ${batch_size} || exit 1
 
-        python3 cascaded_audio_capiton_llm_eval.py \
+        python3 cascaded_audio_caption_llm_eval.py \
         --input_file ${out_dir}/caption_mmau_mini.json \
         --output_file ${out_dir}/res_mmau_mini.json \
         --temperature ${temperature} \
