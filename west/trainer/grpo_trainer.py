@@ -177,7 +177,7 @@ class GRPOTrainer(Trainer):
         # Expand masks for num_generations
         prompt_mask = inputs["attention_mask"].repeat_interleave(self.num_generations, dim=0)
         attention_mask = torch.cat([prompt_mask, generated_mask], dim=1)
-        input_features = inputs["input_features"].repeat(self.num_generations, 1, 1)
+        input_features = inputs["input_features"].repeat_interleave(self.num_generations, dim=0)
         feature_mask = inputs["feature_attention_mask"].repeat_interleave(self.num_generations, dim=0)
 
         return {
