@@ -266,21 +266,25 @@ class KnowledgeDistillationTrainer(Trainer):
         )
         prompt_length = prompt_processed["input_ids"].shape[1]
 
-        # Get prompt tensors
-        prompt_ids = prompt_processed["input_ids"]
-        prompt_mask = prompt_processed["attention_mask"]
+        # Get prompt tensors and expand for num_generations so batch dim matches
+        # generated_ids which has shape (B * num_generations, completion_len)
+        device = self.accelerator.device
+        prompt_ids = prompt_processed["input_ids"].repeat_interleave(self.num_generations, dim=0)
+        prompt_mask = prompt_processed["attention_mask"].repeat_interleave(self.num_generations, dim=0)
+        input_features = prompt_processed["input_features"].repeat_interleave(self.num_generations, dim=0)
+        feature_attention_mask = prompt_processed["feature_attention_mask"].repeat_interleave(
+            self.num_generations, dim=0)
 
         # Concatenate: [prompt_ids, generated_ids]
         # Note: generated_ids are from student, but we assume shared vocabulary
-        device = self.accelerator.device
         full_input_ids = torch.cat([prompt_ids.to(device), generated_ids], dim=1)
         full_attention_mask = torch.cat([prompt_mask.to(device), generated_mask], dim=1)
 
         return {
             "input_ids": full_input_ids,
             "attention_mask": full_attention_mask,
-            "input_features": prompt_processed["input_features"].to(device),
-            "feature_attention_mask": prompt_processed["feature_attention_mask"].to(device),
+            "input_features": input_features.to(device),
+            "feature_attention_mask": feature_attention_mask.to(device),
         }, prompt_length
 
     def _compute_reverse_kl(
