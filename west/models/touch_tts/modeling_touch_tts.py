@@ -108,7 +108,7 @@ class TouchTTS(PreTrainedModel, GenerationMixin):
     ):
         token_length = text_lengths[0].item()
         min_length = token_length * 2
-        max_length = token_length * 20
+        max_length = token_length * 30
         if inputs_embeds is None:
             inputs_embeds, labels = self.reorg_ids(input_ids, labels,
                                                    audio_offsets,

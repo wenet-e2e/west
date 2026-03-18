@@ -4,9 +4,7 @@
 [ ! -s tools ] && ln -s ../../../tools
 export PYTHONPATH=$PYTHONPATH:$PWD
 
-export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"  # Change this to all your available gpus, such as "0,1,2,3"
-num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F ',' '{print NF}')
-
+gpu_ids="0,1,2,3"
 stage=train
 data=data
 dir=exp/touch_tts-Qwen2.5-0.5B-Audio-FSQ_v3_25hz-libritts
@@ -16,7 +14,14 @@ steps=50000  # training steps
 model_conf=conf/touch_tts_config.json
 decode_conf=conf/generation_config.json
 
+test_jsonl=$data/libritts/test.jsonl
+
+lang="zh"
+
 . tools/parse_options.sh
+
+export CUDA_VISIBLE_DEVICES=$gpu_ids
+num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F ',' '{print NF}')
 
 if [ $stage == "data" ] || [ $stage == "all" ]; then
     echo "Prepare required data"
@@ -55,7 +60,6 @@ fi
 
 if [ $stage == "decode" ] || [ $stage == "all" ]; then
     echo "Decoding..."
-    test_jsonl=$data/libritts/test.jsonl
     mdir=$dir/checkpoint-${steps}
     cp $decode_conf $mdir
     testset_name=$(basename ${test_jsonl})
@@ -103,10 +107,11 @@ if [ $stage == "decode" ] || [ $stage == "all" ]; then
         $test_jsonl \
         $audio_dir \
         $flow_output_dir/wav.scp \
-        $flow_output_dir/gt.jsonl
+        $flow_output_dir/gt.jsonl \
+        $lang
 
     # # Compute WER
-    python tools/whisper_asr.py $flow_output_dir/wav.scp $flow_output_dir/syn.jsonl
+    python tools/whisper_asr.py $flow_output_dir/wav.scp $flow_output_dir/syn.jsonl $lang
     python tools/compute_wer.py --char=1 --v=1 \
         $flow_output_dir/gt.jsonl $flow_output_dir/syn.jsonl > $flow_output_dir/syn.wer
 

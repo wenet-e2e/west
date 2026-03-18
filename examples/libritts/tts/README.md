@@ -12,7 +12,11 @@ where `wav` is the wav path, `txt` is the transcript.
 Then, prepare the pretrained LLM model, such as Qwen/Qwen2.5-0.5B-Instruct,
 and add speech tokens to model & tokenizer like:
 ```
-python add_speech_tokens.py Qwen/Qwen2.5-0.5B-Instruct 4096 Qwen/Qwen2.5-0.5B-Audio
+# for speech_tokenizer_v1_25hz
+python add_speech_tokens.py Qwen/Qwen2.5-0.5B-Instruct 4096 Qwen/Qwen2.5-0.5B-Audio-VQ
+
+# for speech_tokenizer_v2_25hz; speech_tokenizer_v3_25hz
+python add_speech_tokens.py Qwen/Qwen2.5-0.5B-Instruct 6561 Qwen/Qwen2.5-0.5B-Audio-FSQ
 ```
 
 To train the model, just run
@@ -67,8 +71,41 @@ bash run_flow.sh --stage decode
 
 ## Results
 
+### LibriTTS
+Trained on LibriTTS (～585 hours, all train data merged). To support long-form speech synthesis, two utterances from the same speaker are randomly concatenated during training.
+
+**Test set:** 500 utterances randomly sampled from LibriTTS test-clean.
+
+
 | LLM        | Tokenizer                  | WER (%) | #N   | #SUB | #INS + DEL | SS     | Details                                                                 |
 |------------|----------------------------|---------|------|------|------------|--------|-------------------------------------------------------------------------|
 | Qwen2-0.5B | speech_tokenizer_v1_25hz   | 5.56    | 5894 | 269  | 59         | 0.834  | LLM: 8 A800 GPUs, pack 20000, 40000 steps<br>Flow: 8 A800 GPUs, batch 32, 18000 steps |
 | Qwen2-0.5B | speech_tokenizer_v2_25hz   | 3.87    | 5894 | 172  | 56         | 0.824  | LLM: 8 A800 GPUs, pack 20000, 40000 steps<br>Flow: 8 A800 GPUs, batch 32, 18000 steps |
 | Qwen2-0.5B | speech_tokenizer_v3_25hz   | 3.55    | 5894 | 161  | 48         | 0.837  | LLM: 8 A800 GPUs, pack 20000, 40000 steps<br>Flow: 8 A800 GPUs, batch 32, 18000 steps |
+
+### LargeData
+
+Trained on ~190k hours of data from [EMILIA](https://huggingface.co/datasets/amphion/Emilia-Dataset), [LibriTTS](https://www.openslr.org/60/), and in-house datasets.
+
+**Test set:** [seed-tts-zh](https://github.com/BytedanceSpeech/seed-tts-eval) and [seed-tts-en](https://github.com/BytedanceSpeech/seed-tts-eval) from the [seed-tts-eval](https://github.com/BytedanceSpeech/seed-tts-eval) benchmark.
+
+
+| LLM        | Tokenizer                  | testset | CER/WER (%) | #N    | #SUB | #INS + DEL | SS     |
+|------------|----------------------------|---------|---------|-------|------|------------|--------|
+| Qwen2-0.5B | speech_tokenizer_v3_25hz   | test-zh | 1.56    | 42241 | 562  | 96         | 0.812  |
+| Qwen2-0.5B | speech_tokenizer_v3_25hz   | test-en | 2.34    | 11820 | 212  | 65         | 0.822  |
+
+- Details
+```
+LLM: 8 A800 GPUs, pack 20000, 264k steps
+Flow: 8 A800 GPUs, batch 64, 100k steps
+```
+
+**CER/WER comparison with CosyVoice series (Seed-TTS test-zh / test-en)**
+
+| Model                                 | test-zh CER (%) | test-en WER (%) |
+|---------------------------------------|-----------------|-----------------|
+| Qwen2-0.5B + speech_tokenizer_v3_25hz | 1.56            | 2.34            |
+| CosyVoice                             | 3.63            | 4.29            |
+| CosyVoice2                            | 1.45            | 2.57            |
+| CosyVoice3-0.5B                       | 1.16            | 2.02            |

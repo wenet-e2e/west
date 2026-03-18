@@ -6,26 +6,17 @@
 
 import json
 import os
-import re
 import sys
 
-from tn.english.normalizer import Normalizer as EnNormalizer
-
-en_tn_model = EnNormalizer(overwrite_cache=False)
-
-
-# normalize the text & keep english characters only.
-def normalize_text(text):
-    text = en_tn_model.normalize(text)
-    text = re.sub(r"[^a-zA-Z0-9']", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
+from tn_utils import get_tn_model, normalize_text
 
 test_jsonl = sys.argv[1]
 wav_dir = sys.argv[2]
 wav_scp = sys.argv[3]
 gt_jsonl = sys.argv[4]
+language = sys.argv[5]
+
+tn_model = get_tn_model(language)
 
 # load the test jsonl file
 wav_scp_data = []
@@ -35,7 +26,7 @@ for i, line in enumerate(lines):
     item = json.loads(line)
     key = item["key"]
     syn_txt = item["syn_txt"].strip()
-    syn_txt = normalize_text(syn_txt)
+    syn_txt = normalize_text(syn_txt, language, tn_model)
 
     # For wav.scp
     wav_path = os.path.join(wav_dir, str(i) + ".wav")
