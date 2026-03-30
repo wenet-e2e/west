@@ -1,0 +1,4 @@
+{
+  "speaker_id_1": "/abs/path/to/speaker_id_1_prompt.wav",
+  "speaker_id_2": "/abs/path/to/speaker_id_2_prompt.wav"
+}
