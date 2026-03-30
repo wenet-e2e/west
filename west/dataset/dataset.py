@@ -6,7 +6,7 @@ import logging
 import random
 import sys
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
 import torch.distributed as dist
@@ -18,10 +18,34 @@ from transformers.trainer_pt_utils import LabelSmoother
 from west.dataset.extractor import Extractor
 
 
+def _tar_sample_get_field(sample: dict, name: str):
+    """Resolve webdataset/tar field by exact key or suffix ``.<name>``.
+
+    Examples: ``txt`` / ``wav.txt`` -> ``txt``; ``wav`` / ``clip.wav`` -> ``wav``.
+    Prefers exact key ``name``; otherwise first key (sorted) ending with ``.<name>``.
+    Skips dunder keys like ``__key__``.
+    """
+    if name in sample:
+        return sample[name]
+    suf = '.' + name
+    for k in sorted(sample.keys()):
+        if not isinstance(k, str) or k.startswith('__'):
+            continue
+        if k.endswith(suf):
+            return sample[k]
+    return None
+
+
 @dataclass
 class DataArguments:
     data_path: str = field(default=None,
                            metadata={"help": "Path to the training data."})
+    spk_prompt_wav_map_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help":
+            "TouchFlow SFT: JSON mapping spk_id -> prompt wav for mel_speaker. "
+        })
     batch_size: int = field(default=1, metadata={"help": "batch size"})
     pack_size: int = field(
         default=0,
@@ -102,14 +126,55 @@ class SpeechDataset(IterableDataset):
                         data = wds.tarfile_samples(src)
                         for x in data:
                             try:
-                                x['txt'] = x['txt'].decode('utf8')
-                                x['wav'] = io.BytesIO(x['wav'])
-                                yield x
-                            except Exception:
-                                logging.info(f'Dataset decode error, {line}')
+                                txt_val = _tar_sample_get_field(x, 'txt')
+                                wav_val = _tar_sample_get_field(x, 'wav')
+                                if txt_val is None or wav_val is None:
+                                    logging.warning(
+                                        'Dataset tar sample missing required txt '
+                                        'or wav, skip. url=%s keys=%s',
+                                        line, list(x.keys()))
+                                    continue
+                                out = {}
+                                if isinstance(txt_val, bytes):
+                                    out['txt'] = txt_val.decode('utf8')
+                                elif isinstance(txt_val, str):
+                                    out['txt'] = txt_val
+                                else:
+                                    logging.warning(
+                                        'Dataset tar txt must be bytes or str, '
+                                        'got %s, url=%s',
+                                        type(txt_val), line)
+                                    continue
+                                if not isinstance(wav_val, bytes):
+                                    logging.warning(
+                                        'Dataset tar wav must be bytes, '
+                                        'got %s, url=%s',
+                                        type(wav_val), line)
+                                    continue
+                                out['wav'] = io.BytesIO(wav_val)
+                                # for sft mode, spk & instruction are optional
+                                for opt_key in ('spk', 'ins'):
+                                    v = _tar_sample_get_field(x, opt_key)
+                                    if v is None:
+                                        continue
+                                    if isinstance(v, bytes):
+                                        out[opt_key] = v.decode('utf8')
+                                    elif isinstance(v, str):
+                                        out[opt_key] = v
+                                    else:
+                                        logging.warning(
+                                            'Dataset tar %s must be bytes or str, '
+                                            'got %s, url=%s',
+                                            opt_key, type(v), line)
+                                for meta in ('__key__', '__url__'):
+                                    if meta in x:
+                                        out[meta] = x[meta]
+                                yield out
+                            except Exception as e:
+                                logging.info(f'Dataset decode error, {line}, {e}')
                                 continue
-                    except Exception:
-                        logging.info(f'Dataset parsing error, {line}')
+                    except Exception as e:
+                        logging.info(f'Dataset parsing error, {line}, {e}')
                         continue
 
     def _pack_sequence(self, seqs):
@@ -164,6 +229,8 @@ class SpeechDataset(IterableDataset):
             fields_static = self.extractor.fields_batch_static - \
                 self.extractor.fields_pack_offset
         for k in fields_dynamic:
+            if not all(k in s for s in seqs):
+                continue
             if k == 'input_ids':
                 padding_value = self.tokenizer.pad_token_id
             elif k == 'labels':
@@ -180,6 +247,8 @@ class SpeechDataset(IterableDataset):
                 ret['attention_mask'] = ret['input_ids'].ne(
                     self.tokenizer.pad_token_id)
         for k in fields_static:
+            if not all(k in s for s in seqs):
+                continue
             ret[k] = torch.tensor([s[k] for s in seqs], dtype=torch.int)
         if not pack:
             ret['batch_idx'] = torch.tensor(list(range(len(seqs))),

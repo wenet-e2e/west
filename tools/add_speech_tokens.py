@@ -11,7 +11,13 @@ dst_dir = sys.argv[3]
 model = AutoModelForCausalLM.from_pretrained(model_dir)
 tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
-special_audio_tokens = ['<|audio|>', '<|audio_bos|>', '<|audio_eos|>']
+special_audio_tokens = [
+    "<|audio|>",
+    "<|audio_bos|>",
+    "<|audio_eos|>",
+    "<|spk_eos|>",
+    "<|ins_eos|>",
+]
 
 special_tokens_dict = {'additional_special_tokens': special_audio_tokens}
 

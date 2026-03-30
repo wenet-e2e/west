@@ -13,10 +13,15 @@ class Extractor(ABC):
     fields_batch_dynamic = {}
     fields_pack_offset = {}
 
-    def __init__(self, tokenizer, model_config, inference=False):
+    def __init__(self,
+                 tokenizer,
+                 model_config,
+                 inference=False,
+                 spk_prompt_wav_map_path=None):
         self.tokenizer = tokenizer
         self.model_config = model_config
         self.inference = inference
+        self.spk_prompt_wav_map_path = spk_prompt_wav_map_path
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

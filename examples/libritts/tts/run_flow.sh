@@ -9,8 +9,11 @@ num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F ',' '{print NF}')
 
 stage=train
 data=data
-dir=exp/touch_flow-Qwen2.5-0.5B-Audio-FSQ_v3_25hz-libritts
+dir=exp/touch_flow-Qwen2.5-0.5B-Audio-FSQ_v3_25hz-spk_ins_sft
 steps=50000  # training steps
+
+# None for pretrain, JSON for sft
+spk_prompt_wav_map_path=conf/spk_prompt_wav_map.example.json
 
 . tools/parse_options.sh
 
@@ -45,7 +48,8 @@ if [ $stage == "train" ] || [ $stage == "all" ]; then
         --dataloader_prefetch_factor 10 \
         --ignore_data_skip True \
         --deepspeed conf/ds_config_zero2.json \
-        --accelerator_config conf/accelerator_config.json
+        --accelerator_config conf/accelerator_config.json \
+        --spk_prompt_wav_map_path $spk_prompt_wav_map_path
 fi
 
 

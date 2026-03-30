@@ -112,8 +112,13 @@ def main():
     else:  # load from pretrained
         model = AutoModel.from_pretrained(training_args.model_config_or_dir)
         config = model.config
+    p = (getattr(data_args, 'spk_prompt_wav_map_path', None) or '').strip()
     tokenizer = model.init_tokenizer()
-    extractor = Extractor.get_class(model.model_type)(tokenizer, config)
+    extractor = Extractor.get_class(model.model_type)(
+        tokenizer,
+        config,
+        spk_prompt_wav_map_path=p or None,
+    )
 
     print("Loading data...")
     train_dataset = SpeechDataset(extractor, data_args)

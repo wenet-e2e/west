@@ -47,25 +47,30 @@ class TouchTTS(PreTrainedModel, GenerationMixin):
         inputs_embeds: Optional[torch.LongTensor] = None,
     ):
         """ Extract speech codes by speech tokenizer, and reorg that in
-            `input_ids`, `labels`
+            `input_ids`, `labels`.
+            When audio_features is None (e.g. SFT without prompt wav),
+            skip speech tokenizer and return text embeddings directly.
         """
-        speech_codes, speech_codes_lens = self.speech_tokenizer.quantize(
-            audio_features.transpose(1, 2), audio_features_lengths)
-        for i in range(audio_features.size(0)):
-            b = batch_idx[i]
-            s, e = audio_offsets[i], audio_offsets[i] + speech_codes_lens[i]
-            ids = speech_codes[
-                i, :speech_codes_lens[i]] + self.speech_code_start_idx
-            input_ids[b, s:e] = ids
-            labels[b, s:e] = ids
+        if audio_features is not None:
+            speech_codes, speech_codes_lens = self.speech_tokenizer.quantize(
+                audio_features.transpose(1, 2), audio_features_lengths)
+            for i in range(audio_features.size(0)):
+                b = batch_idx[i]
+                s, e = audio_offsets[i], audio_offsets[i] + speech_codes_lens[i]
+                ids = speech_codes[
+                    i, :speech_codes_lens[i]] + self.speech_code_start_idx
+                input_ids[b, s:e] = ids
+                labels[b, s:e] = ids
+
         text_embs = self.llm.get_input_embeddings()(input_ids)
         if inputs_embeds is None:
             return text_embs, labels
         else:  # replace speech token emb
-            for i in range(audio_features.size(0)):
-                b = batch_idx[i]
-                s, e = audio_offsets[i], audio_offsets[i] + speech_codes_lens[i]
-                inputs_embeds[b, s:e] = text_embs[b, s:e]
+            if audio_features is not None:
+                for i in range(audio_features.size(0)):
+                    b = batch_idx[i]
+                    s, e = audio_offsets[i], audio_offsets[i] + speech_codes_lens[i]
+                    inputs_embeds[b, s:e] = text_embs[b, s:e]
             return inputs_embeds, labels
 
     @torch.autocast(device_type="cuda", dtype=torch.bfloat16)

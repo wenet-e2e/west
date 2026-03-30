@@ -90,22 +90,50 @@ Trained on ~190k hours of data from [EMILIA](https://huggingface.co/datasets/amp
 **Test set:** [seed-tts-zh](https://github.com/BytedanceSpeech/seed-tts-eval) and [seed-tts-en](https://github.com/BytedanceSpeech/seed-tts-eval) from the [seed-tts-eval](https://github.com/BytedanceSpeech/seed-tts-eval) benchmark.
 
 
-| LLM        | Tokenizer                  | testset | CER/WER (%) | #N    | #SUB | #INS + DEL | SS     |
-|------------|----------------------------|---------|---------|-------|------|------------|--------|
-| Qwen2-0.5B | speech_tokenizer_v3_25hz   | test-zh | 1.56    | 42241 | 562  | 96         | 0.812  |
-| Qwen2-0.5B | speech_tokenizer_v3_25hz   | test-en | 2.34    | 11820 | 212  | 65         | 0.822  |
+| LLM        | Tokenizer                  | mode     | spk            | testset | CER/WER (%) | #N    | #SUB | #INS + DEL | SS         |
+|------------|----------------------------|----------| ---------------|---------|-------------|-------|------|------------|------------|
+| Qwen2-0.5B | speech_tokenizer_v3_25hz   | pretrain |  -             | test-zh | 1.56        | 42241 | 562  | 96         | 0.812      |
+| Qwen2-0.5B | speech_tokenizer_v3_25hz   | pretrain |  -             | test-en | 2.34        | 11820 | 212  | 65         | 0.822      |
+| Qwen2-0.5B | speech_tokenizer_v3_25hz   | SFT      | biaobei female | test-zh | **1.25**    | 42241 | 503  | 24         | **0.869**  |
+| Qwen2-0.5B | speech_tokenizer_v3_25hz   | SFT      | internal       | test-en | **1.77**    | 11820 | 175  | 34         | **0.911**  |
 
-- Details
+- **spk (SFT)**
+  - `biaobei female`: [标贝中文标准女声音库](https://www.data-baker.com/open_source.html).
+  - `internal`: In-house English speaker (female); **1056** utterances, **~1.5** hours in total.
+
+- **Training details**
 ```
-LLM: 8 A800 GPUs, pack 20000, 264k steps
-Flow: 8 A800 GPUs, batch 64, 100k steps
+Pretrain:
+LLM: 8 A800 GPUs, pack 20000, 264k steps, lr 3e-4
+Flow: 8 A800 GPUs, batch 64, 100k steps, lr 3e-4
+
+SFT:
+LLM: 8 A800 GPUs, pack 20000, 7k steps, lr 4e-4
+Flow: 8 A800 GPUs, batch 64, 7k steps, lr 3e-4
 ```
 
 **CER/WER comparison with CosyVoice series (Seed-TTS test-zh / test-en)**
 
 | Model                                 | test-zh CER (%) | test-en WER (%) |
 |---------------------------------------|-----------------|-----------------|
-| Qwen2-0.5B + speech_tokenizer_v3_25hz | 1.56            | 2.34            |
+| Qwen2-0.5B + speech_tokenizer_v3_25hz | *1.56*          | *2.34*          |
 | CosyVoice                             | 3.63            | 4.29            |
 | CosyVoice2                            | 1.45            | 2.57            |
 | CosyVoice3-0.5B                       | 1.16            | 2.02            |
+
+---
+## Field reference
+
+| Field | Meaning |
+|------|---------|
+| `txt` | Text aligned with the reference audio (prompt transcript). |
+| `wav` | Path to the reference / prompt waveform. |
+| `syn_txt` | Target text to synthesize (used at inference). |
+| `spk` | Speaker id or short description (SFT). |
+| `ins` | Speaker style instruction (SFT). |
+
+**Special tokens**:
+
+- `<|spk_eos|>` — end of speaker block
+- `<|ins_eos|>` — end of instruction block
+- `<|audio_bos|>` — start of discrete audio tokens
