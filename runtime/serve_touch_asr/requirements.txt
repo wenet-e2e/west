@@ -1,0 +1,16 @@
+websockets>=12.0
+numpy==2.2.6
+pyyaml==6.0.2
+librosa==0.11.0
+tqdm==4.67.3
+soundfile==0.13.1
+scipy==1.15.3
+jieba==0.42.1
+torch==2.9.1
+transformers==4.57.3
+accelerate==1.12.0
+safetensors==0.7.0
+tokenizers==0.22.1
+sentencepiece==0.2.1
+pillow==12.1.1
+qwen-omni-utils==0.0.8

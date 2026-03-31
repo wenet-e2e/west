@@ -1,0 +1,35 @@
+# =============================================
+# 推理热配置 (支持 importlib.reload，修改即生效)
+# =============================================
+
+# 日志级别: DEBUG / INFO / WARNING
+log_level: INFO
+
+# ASR 提示词 (中文 prompt 将引导模型进行中文 ASR)
+prompt: "请转录这段音频。"
+
+# Chunk 推理触发粒度 (毫秒)
+chunk_ms: 1000
+
+# 采样参数
+sampling_params:
+  temperature: 0.01
+  top_p: 0.1
+  top_k: 1
+  max_tokens: 512
+  seed: 42
+  repetition_penalty: 1.05
+
+# 前导静音跳过 (none 模式下节省首次开麦前的 GPU 开销)
+silence_skip:
+  enabled: true
+  frame_ms: 20              # (int) 帧长毫秒
+  rms_threshold: 0.003      # (float) 归一化 RMS 阈值
+  min_voiced_frames: 1      # (int) 触发语音的最小有声帧数
+
+# 话轮检测 (type: server_vad 自动 commit / none 客户端手动截断)
+turn_detection:
+  type: none
+  threshold: 0.97              # (float) Silero 概率阈值
+  silence_duration_ms: 700     # (int) 语音结束判断所需静音时长
+  prefix_padding_ms: 300       # (int) 语音起始预留填充时长

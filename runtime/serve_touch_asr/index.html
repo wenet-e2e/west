@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>流式语音识别体验</title>
+  <style>
+    /* 全局样式 - 清爽简洁的圆角风格 */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f7f9fc;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background-color: #fff;
+      padding: 15px 30px;
+      font-size: 20px;
+      font-weight: 600;
+      border-bottom: 1px solid #eaeaea;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .status-badge {
+      font-size: 14px;
+      font-weight: normal;
+      color: #666;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .indicator-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: #ccc;
+      transition: background-color 0.3s;
+    }
+    .indicator-dot.active { background-color: #10b981; }
+    .indicator-dot.error { background-color: #ef4444; }
+
+    /* 布局容器：左右分栏 */
+    .main-container {
+      display: flex;
+      flex: 1;
+      padding: 24px;
+      gap: 24px;
+      height: calc(100vh - 61px);
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    /* 左侧：识别结果与控制区 */
+    .left-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    /* 右侧：事件日志区 */
+    .right-panel {
+      width: 400px;
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid #eaeaea;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+      flex-shrink: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* 卡片通用样式 */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid #eaeaea;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-header {
+      padding: 16px 20px;
+      font-size: 16px;
+      font-weight: 600;
+      border-bottom: 1px solid #f0f0f0;
+      background-color: #fafafa;
+      border-top-left-radius: 12px;
+      border-top-right-radius: 12px;
+      color: #1f2937;
+    }
+
+    /* 文本展示区 */
+    .text-display-area {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      font-size: 16px;
+      line-height: 1.8;
+      color: #374151;
+    }
+
+    .session-block {
+      margin-bottom: 16px;
+    }
+    .session-block:not(:first-child) {
+      border-top: 1px solid #e5e7eb;
+      padding-top: 12px;
+    }
+    .session-block-header {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .session-block-header::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #d1d5db;
+    }
+    .session-block.active .session-block-header::before {
+      background: #10b981;
+    }
+    .turn-line {
+      padding: 2px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .turn-line .turn-check {
+      color: #10b981;
+      font-size: 14px;
+      margin-left: 4px;
+    }
+
+    /* 日志展示区 */
+    .log-display-area {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      font-size: 13px;
+      line-height: 1.5;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      color: #4b5563;
+      background-color: #fafafa;
+      border-bottom-left-radius: 12px;
+      border-bottom-right-radius: 12px;
+    }
+
+    .log-entry {
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #eee;
+      word-break: break-all;
+    }
+    .log-time {
+      color: #9ca3af;
+      margin-right: 8px;
+      font-size: 12px;
+    }
+    .log-type-send { color: #3b82f6; font-weight: 600; }
+    .log-type-recv { color: #10b981; font-weight: 600; }
+
+    /* 底部控制区 */
+    .control-panel {
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: auto;
+    }
+
+    .action-button {
+      padding: 14px 40px;
+      font-size: 18px;
+      font-weight: 600;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      color: white;
+      background-color: #3b82f6;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .action-button:hover {
+      background-color: #2563eb;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+    }
+
+    .action-button.is-working {
+      background-color: #ef4444;
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+    }
+
+    .action-button.is-working:hover {
+      background-color: #dc2626;
+      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+    }
+
+    .action-button.upload-btn {
+      background-color: #8b5cf6;
+      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    }
+    .action-button.upload-btn:hover {
+      background-color: #7c3aed;
+      box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+    }
+    .action-button.upload-btn.is-sending {
+      background-color: #f59e0b;
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+      cursor: not-allowed;
+    }
+
+    .file-info {
+      font-size: 13px;
+      color: #6b7280;
+      text-align: center;
+      padding: 4px 0 0;
+    }
+
+    /* 配置面板 */
+    .config-toggle {
+      font-size: 13px;
+      color: #6b7280;
+      cursor: pointer;
+      user-select: none;
+      text-align: center;
+      padding: 6px 0;
+    }
+    .config-toggle:hover { color: #3b82f6; }
+    .config-panel {
+      display: none;
+      padding: 12px 20px 4px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .config-panel.open { display: block; }
+    .config-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    .config-row label {
+      width: 90px;
+      flex-shrink: 0;
+      color: #4b5563;
+      font-weight: 500;
+    }
+    .config-row input[type="number"],
+    .config-row input[type="text"],
+    .config-row select {
+      flex: 1;
+      padding: 5px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      background: #fff;
+      outline: none;
+    }
+    .config-row input:focus, .config-row select:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+    }
+    .config-row .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      cursor: pointer;
+    }
+    .config-row .toggle-switch input { display: none; }
+    .config-row .toggle-switch .slider {
+      position: absolute;
+      inset: 0;
+      background: #d1d5db;
+      border-radius: 10px;
+      transition: 0.2s;
+    }
+    .config-row .toggle-switch .slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 2px; top: 2px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+    .config-row .toggle-switch input:checked + .slider {
+      background: #3b82f6;
+    }
+    .config-row .toggle-switch input:checked + .slider::before {
+      transform: translateX(16px);
+    }
+
+    /* 打字机光标 */
+    .typing-cursor {
+      display: inline-block;
+      width: 4px;
+      height: 18px;
+      background-color: #3b82f6;
+      vertical-align: middle;
+      animation: blink 1s infinite;
+      margin-left: 4px;
+      border-radius: 2px;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* 模型加载中横幅 */
+    .loading-banner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      margin: 8px 0;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      animation: fadeSlideIn 0.3s ease-out;
+    }
+    .loading-banner-spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #bfdbfe;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      flex-shrink: 0;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-banner-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1d4ed8;
+      margin-bottom: 2px;
+    }
+    .loading-banner-stage {
+      font-size: 13px;
+      color: #3b82f6;
+      line-height: 1.4;
+    }
+
+    /* 错误提示横幅 */
+    .error-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px;
+      margin: 8px 0;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      animation: fadeSlideIn 0.3s ease-out;
+    }
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .error-banner-icon {
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .error-banner-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #dc2626;
+      margin-bottom: 4px;
+    }
+    .error-banner-detail {
+      font-size: 13px;
+      color: #991b1b;
+      line-height: 1.5;
+    }
+
+    /* 滚动条美化 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 顶部状态栏 -->
+  <div class="header">
+    <div>Qwen3-Omni 语音识别</div>
+    <div class="status-badge">
+      <div id="connection_indicator" class="indicator-dot"></div>
+      <span id="connection_status_text">尚未连接</span>
+    </div>
+  </div>
+
+  <!-- 主容器 -->
+  <div class="main-container">
+
+    <!-- 左侧区域 -->
+    <div class="left-panel">
+      <!-- 识别结果展示区 -->
+      <div class="card" style="flex: 1; min-height: 0; overflow: hidden;">
+        <div class="card-header">在线 ASR 结果</div>
+        <div class="text-display-area" id="result_text_box">
+          <span class="typing-cursor" id="cursor_element" style="display: none;"></span>
+        </div>
+      </div>
+
+      <!-- 底部控制按钮 + 配置 -->
+      <div class="card" style="flex-shrink: 0;">
+        <div class="config-toggle" id="config_toggle">&#9881; 推理配置 ▾</div>
+        <div class="config-panel" id="config_panel">
+          <div class="config-row">
+            <label>chunk_ms</label>
+            <input type="number" id="cfg_chunk_ms" value="1000" min="200" max="10000" step="100" placeholder="默认 1000">
+          </div>
+          <div class="config-row">
+            <label>prompt</label>
+            <input type="text" id="cfg_prompt" value="请转录这段音频。" placeholder="默认: 请转录这段音频。">
+          </div>
+          <div class="config-row">
+            <label>历史拼接</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="cfg_use_history" checked>
+              <span class="slider"></span>
+            </label>
+            <span style="color:#9ca3af;font-size:12px;margin-right:12px" id="cfg_history_label">开启</span>
+            <span style="color:#9ca3af;font-size:12px;margin-right:6px">回退</span>
+            <span id="cfg_rollback_row" style="display:flex;align-items:center;gap:6px">
+              <select id="cfg_rollback_strategy">
+                <option value="none">none</option>
+                <option value="ratio">ratio</option>
+                <option value="chars">chars</option>
+                <option value="words">words</option>
+              </select>
+              <input type="number" id="cfg_rollback_value" value="0" min="0" step="0.1" style="width:60px;flex:none" placeholder="值">
+            </span>
+          </div>
+          <div class="config-row" style="flex-wrap:wrap">
+            <label>话轮检测</label>
+            <select id="cfg_turn_detection" style="flex:0 0 auto;width:auto;min-width:180px">
+              <option value="none" selected>none (手动提交)</option>
+              <option value="server_vad">server_vad (自动端点)</option>
+            </select>
+            <div id="td_hint" style="width:100%;margin-top:4px;padding:6px 8px;font-size:11px;line-height:1.6;color:#6b7280;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb"></div>
+          </div>
+        </div>
+        <div class="control-panel" style="gap: 12px;">
+          <button id="toggle_mic_button" class="action-button">开始识别</button>
+          <button id="upload_audio_button" class="action-button upload-btn">上传音频</button>
+          <input type="file" id="audio_file_input" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.opus" style="display: none;" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧区域 -->
+    <div class="right-panel">
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>WebSocket 事件日志</span>
+        <span id="log_counter" style="font-size: 12px; color: #9ca3af; font-weight: normal;">高频事件折叠中</span>
+      </div>
+      <div class="log-display-area" id="log_display_area">
+        <!-- 日志将在这里显示 -->
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // =========================================
+    // 变量名极度白话化，可见即可得
+    // =========================================
+    const WS_PORT = 8001;
+    const server_websocket_url = `ws://${location.hostname || 'localhost'}:${WS_PORT}/v1/realtime`;
+    const server_health_url = `http://${location.hostname || 'localhost'}:${WS_PORT}/health`;
+
+    /**
+     * 轮询 GET /health 直到模型就绪，期间每 2 秒刷新一次 UI 进度。
+     * 超过 MAX_POLL_MS（默认 180s）后抛出 Error，由调用方 catch 处理。
+     */
+    const HEALTH_POLL_INTERVAL_MS = 2000;
+    const HEALTH_POLL_MAX_MS = 180_000;  // 3 分钟，足够最大模型加载
+
+    async function poll_health_until_ready() {
+      const deadline = Date.now() + HEALTH_POLL_MAX_MS;
+      while (true) {
+        if (Date.now() >= deadline) {
+          throw new Error(`模型加载超时（超过 ${HEALTH_POLL_MAX_MS / 1000}s），请检查服务端日志`);
+        }
+        try {
+          const resp = await fetch(server_health_url, { cache: 'no-store' });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.ready) return;
+            update_ui_status('', '模型加载中...');
+            show_loading_in_result_area(data.stage);
+            add_log('SYS', `模型加载中: ${data.stage}`);
+          }
+        } catch (_) {
+          // 服务尚未启动，静默等待
+          add_log('SYS', '等待服务启动...');
+        }
+        await new Promise(r => setTimeout(r, HEALTH_POLL_INTERVAL_MS));
+      }
+    }
+
+    // 界面元素
+    const ui_button = document.getElementById('toggle_mic_button');
+    const ui_upload_button = document.getElementById('upload_audio_button');
+    const ui_file_input = document.getElementById('audio_file_input');
+    const ui_status_text = document.getElementById('connection_status_text');
+    const ui_indicator_dot = document.getElementById('connection_indicator');
+    const ui_text_box = document.getElementById('result_text_box');
+    const ui_cursor = document.getElementById('cursor_element');
+    const ui_log_area = document.getElementById('log_display_area');
+
+    // 配置面板元素
+    const ui_config_toggle = document.getElementById('config_toggle');
+    const ui_config_panel = document.getElementById('config_panel');
+    const cfg_chunk_ms = document.getElementById('cfg_chunk_ms');
+    const cfg_prompt = document.getElementById('cfg_prompt');
+    const cfg_use_history = document.getElementById('cfg_use_history');
+    const cfg_history_label = document.getElementById('cfg_history_label');
+    const cfg_rollback_strategy = document.getElementById('cfg_rollback_strategy');
+    const cfg_rollback_value = document.getElementById('cfg_rollback_value');
+    const cfg_turn_detection = document.getElementById('cfg_turn_detection');
+    const td_hint = document.getElementById('td_hint');
+
+    const TD_HINTS = {
+      'none': '手动提交：点击「开始识别」收音，点击「结束识别」提交。中间按 chunk_ms 触发增量推理，不做自动断句。',
+      'server_vad': '自动端点：点击「开始识别」后，服务端 Silero VAD 实时检测语音起止。说话时自动推理，停顿后自动提交并开始新一轮，静音段不会送入模型。'
+    };
+    function sync_td_hint() {
+      td_hint.textContent = TD_HINTS[cfg_turn_detection.value] || '';
+    }
+    cfg_turn_detection.addEventListener('change', sync_td_hint);
+    sync_td_hint();
+
+    ui_config_toggle.addEventListener('click', () => {
+      ui_config_panel.classList.toggle('open');
+      ui_config_toggle.innerHTML = ui_config_panel.classList.contains('open')
+        ? '&#9881; 推理配置 &#9652;' : '&#9881; 推理配置 &#9662;';
+    });
+    const cfg_rollback_row = document.getElementById('cfg_rollback_row');
+    function sync_rollback_state() {
+      const enabled = cfg_use_history.checked;
+      cfg_rollback_row.style.opacity = enabled ? '1' : '0.35';
+      cfg_rollback_strategy.disabled = !enabled;
+      cfg_rollback_value.disabled = !enabled;
+    }
+    cfg_use_history.addEventListener('change', () => {
+      cfg_history_label.textContent = cfg_use_history.checked ? '开启' : '关闭';
+      sync_rollback_state();
+    });
+    sync_rollback_state();
+
+    // 识别进行中锁定/解锁推理配置（防止中途改参数发送了旧 session.update）
+    function set_config_locked(locked) {
+      const els = [cfg_chunk_ms, cfg_prompt, cfg_use_history,
+                   cfg_rollback_strategy, cfg_rollback_value, cfg_turn_detection];
+      els.forEach(el => { el.disabled = locked; });
+      ui_config_toggle.style.pointerEvents = locked ? 'none' : '';
+      ui_config_toggle.style.opacity      = locked ? '0.45' : '';
+    }
+
+    function build_session_update_payload() {
+      const session_cfg = {};
+      const extra = {};
+
+      // --- OpenAI 标准字段 ---
+      const prompt_val = cfg_prompt.value.trim();
+      if (prompt_val) {
+        session_cfg.instructions = prompt_val;
+      }
+      const td_val = cfg_turn_detection.value;
+      if (td_val) {
+        session_cfg.audio = { input: { turn_detection: { type: td_val } } };
+      }
+
+      // --- extra 自定义扩展字段 ---
+      const chunk_val = parseInt(cfg_chunk_ms.value);
+      if (!isNaN(chunk_val) && chunk_val > 0) {
+        extra.chunk_ms = chunk_val;
+      }
+      if (!cfg_use_history.checked) {
+        extra.use_history = false;
+      }
+      const rb_strategy = cfg_rollback_strategy.value;
+      const rb_value = parseFloat(cfg_rollback_value.value);
+      if (rb_strategy !== 'none' && rb_value > 0) {
+        extra.rollback = { enabled: true, strategy: rb_strategy, value: rb_value };
+      }
+      if (Object.keys(extra).length > 0) {
+        session_cfg.extra = extra;
+      }
+      return Object.keys(session_cfg).length > 0 ? session_cfg : null;
+    }
+
+    // 运行状态与底层实例
+    let is_microphone_working = false;
+    let server_connection = null;     // 对应 WebSocket
+
+    // 音频处理相关变量
+    let hardware_microphone_stream = null;
+    let audio_processor_engine = null;
+    let audio_capture_node = null;
+    let audio_sender_node = null;
+    let audio_gain_node = null;
+
+    // 当前轮文本追踪（配合 server 的 cursor 协议实现精确回退）
+    let current_turn_text = "";
+    let current_turn_node = null;    // 当前轮 <span> 里的文本节点
+    let current_turn_div = null;     // 当前轮 <div class="turn-line">
+    let current_session_block = null; // 当前会话块 <div class="session-block">
+
+    // 日志频率控制
+    let append_audio_count = 0;
+
+    // 预录制缓冲：getUserMedia 成功后立即开始录音，服务器就绪前缓存到此处
+    // 服务器就绪（activate_audio_capture）时补发，避免用户开口时录音还没启动导致前导静音
+    let pre_capture_chunks = [];
+    const MAX_PRE_CAPTURE_CHUNKS = 20;  // 20 × 256ms ≈ 5 秒
+
+    // 连接状态追踪
+    let has_ever_connected = false;
+    let is_engine_ready = false;
+    let is_audio_capturing = false;
+    let current_conn_id = 0;  // 每次新建连接自增，用于识别过期消息
+
+    // 文件上传模式状态
+    let is_file_uploading = false;
+
+    // ----- 日志打印工具 -----
+    function add_log(type, action, details = "") {
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+
+      const logDiv = document.createElement('div');
+      logDiv.className = 'log-entry';
+
+      let typeClass = type === 'SEND' ? 'log-type-send' : 'log-type-recv';
+
+      let displayDetails = details;
+      // 截断过长的 base64 或文本
+      if (details.length > 50) {
+        displayDetails = details.substring(0, 50) + '...';
+      }
+
+      logDiv.innerHTML = `<span class="log-time">[${timeStr}]</span><span class="${typeClass}">${type}</span> ${action} <span style="color:#9ca3af">${displayDetails}</span>`;
+
+      ui_log_area.appendChild(logDiv);
+      // 保持滚动到底部
+      ui_log_area.scrollTop = ui_log_area.scrollHeight;
+
+      // 防止日志无限堆积，保留最近的 500 条
+      if (ui_log_area.children.length > 500) {
+        ui_log_area.removeChild(ui_log_area.firstChild);
+      }
+    }
+
+    // ----- UI 状态更新工具 -----
+    function update_ui_status(status, text) {
+      ui_status_text.innerText = text;
+      ui_indicator_dot.className = 'indicator-dot ' + status;
+    }
+
+    // ----- 在识别结果区显示错误提示 -----
+    function show_error_in_result_area(title, detail) {
+      const existing = document.getElementById('error_banner');
+      if (existing) existing.remove();
+
+      if (ui_cursor.parentNode !== ui_text_box) {
+        ui_text_box.appendChild(ui_cursor);
+      }
+
+      const banner = document.createElement('div');
+      banner.id = 'error_banner';
+      banner.className = 'error-banner';
+      banner.innerHTML = `
+        <div class="error-banner-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div class="error-banner-text">
+          <div class="error-banner-title">${title}</div>
+          <div class="error-banner-detail">${detail}</div>
+        </div>
+      `;
+      ui_text_box.insertBefore(banner, ui_cursor);
+      ui_text_box.scrollTop = ui_text_box.scrollHeight;
+    }
+
+    // ----- 按钮点击事件 -----
+    ui_button.addEventListener('click', async () => {
+      if (!is_microphone_working) {
+        await start_microphone_and_connect_server();
+      } else {
+        stop_microphone_and_finish_turn();
+      }
+    });
+
+    // ----- 核心动作：开启麦克风 & 连接服务器 -----
+    async function start_microphone_and_connect_server() {
+      // 入口即锁定按钮，防止 poll 期间（可达数分钟）用户重复点击产生多实例
+      ui_button.disabled = true;
+      ui_button.style.opacity = '0.5';
+      ui_button.style.cursor = 'not-allowed';
+      ui_button.innerText = '连接中...';
+      set_config_locked(true);
+      try {
+        // 清理上一轮残留的 WebSocket 连接，防止旧连接的 onclose 回调干扰新连接
+        if (server_connection) {
+          server_connection.onclose = null;
+          server_connection.onerror = null;
+          server_connection.onmessage = null;
+          if (server_connection.readyState === WebSocket.OPEN || server_connection.readyState === WebSocket.CONNECTING) {
+            server_connection.close();
+          }
+          server_connection = null;
+        }
+
+        add_log('SYS', '请求麦克风权限...');
+        hardware_microphone_stream = await navigator.mediaDevices.getUserMedia({
+          audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true }
+        });
+        add_log('SYS', '麦克风权限获取成功');
+
+        // 在用户点击上下文中预创建 AudioContext，避免被浏览器 autoplay policy 阻止
+        if (!audio_processor_engine || audio_processor_engine.state === 'closed') {
+          audio_processor_engine = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TARGET_SAMPLE_RATE });
+        }
+        if (audio_processor_engine.state === 'suspended') {
+          await audio_processor_engine.resume();
+        }
+        add_log('SYS', `AudioContext 预创建成功 (state=${audio_processor_engine.state})`);
+
+        // 立即开始预录制：用户点击按钮时就可能已经在说话，不能等服务器就绪
+        // onaudioprocess 在 is_audio_capturing=false 时缓存到 pre_capture_chunks（滑动窗口）
+        // activate_audio_capture 触发后会自动补发这些历史帧
+        pre_capture_chunks = [];
+        begin_capture_and_send_audio();
+        add_log('SYS', '预录制已启动（等待服务器就绪后补发）');
+
+        // 轮询 /health，模型就绪后再连 WebSocket
+        add_log('SYS', '检查模型就绪状态...');
+        await poll_health_until_ready();
+        add_log('SYS', '模型已就绪');
+
+        add_log('SYS', `连接 WebSocket: ${server_websocket_url}`);
+        current_conn_id++;
+        const my_conn_id = current_conn_id;
+        server_connection = new WebSocket(server_websocket_url);
+
+        server_connection.onopen = () => {
+          has_ever_connected = true;
+          is_engine_ready = false;
+          is_audio_capturing = false;
+          const old_error = document.getElementById('error_banner');
+          if (old_error) old_error.remove();
+
+          update_ui_status('active', '已连接，初始化中');
+          // 按钮已在函数入口禁用，此处保持禁用状态
+          ui_button.innerText = '连接中...';
+          is_microphone_working = true;
+          add_log('SYS', 'WebSocket 连接成功');
+          append_audio_count = 0;
+        };
+
+        // 用闭包绑定 connId，过期连接的消息不污染新 session 的 UI
+        server_connection.onmessage = (event) => {
+          if (my_conn_id !== current_conn_id) return;
+          on_receive_message_from_server(event);
+        };
+
+        server_connection.onerror = (err) => {
+          add_log('SYS', 'WebSocket 连接出错');
+          if (!has_ever_connected) {
+            update_ui_status('error', '无法连接到识别服务');
+            show_error_in_result_area(
+              '无法连接到识别服务',
+              `请检查后端服务是否已启动，地址: ${server_websocket_url}`
+            );
+          } else {
+            update_ui_status('error', '连接异常中断');
+            show_error_in_result_area('连接异常中断', '与识别服务的连接意外断开，请重试');
+          }
+          stop_microphone_and_finish_turn();
+        };
+
+        server_connection.onclose = (event) => {
+          add_log('SYS', `WebSocket 连接关闭 (code=${event.code})`);
+          if (!has_ever_connected) {
+            update_ui_status('error', '服务不可用');
+            show_error_in_result_area(
+              '识别服务不可用',
+              `WebSocket 连接被拒绝 (${server_websocket_url})，请确认服务已启动`
+            );
+          } else {
+            update_ui_status('', '服务器已断开');
+          }
+          if (is_microphone_working) stop_microphone_and_finish_turn();
+          has_ever_connected = false;
+        };
+
+      } catch (error) {
+        add_log('ERR', '启动失败', error.message);
+        // 释放已申请的麦克风和音频资源
+        if (audio_sender_node) { audio_sender_node.disconnect(); audio_sender_node.onaudioprocess = null; audio_sender_node = null; }
+        if (audio_gain_node) { audio_gain_node.disconnect(); audio_gain_node = null; }
+        if (audio_capture_node) { audio_capture_node.disconnect(); audio_capture_node = null; }
+        if (hardware_microphone_stream) { hardware_microphone_stream.getTracks().forEach(t => t.stop()); hardware_microphone_stream = null; }
+        pre_capture_chunks = [];
+        // 根据错误类型展示不同提示
+        const is_mic_error = error.name === 'NotAllowedError' || error.name === 'NotFoundError' || error.message.includes('麦克风');
+        const msg = is_mic_error
+          ? '无法获取麦克风，请检查浏览器权限！\n' + error.message
+          : '连接失败：' + error.message;
+        show_error_in_result_area('启动失败', msg);
+        update_ui_status('error', '启动失败');
+        // 恢复按钮状态，允许用户重试
+        ui_button.disabled = false;
+        ui_button.style.opacity = '';
+        ui_button.style.cursor = '';
+        ui_button.innerText = '开始识别';
+        set_config_locked(false);
+      }
+    }
+
+    // ----- 核心动作：停止收音 & 提交结算 -----
+    function stop_microphone_and_finish_turn() {
+      // 无论 Server VAD 还是手动模式，点"结束识别"都发 commit 处理最后的尾巴
+      if (server_connection && server_connection.readyState === WebSocket.OPEN) {
+        add_log('SEND', 'input_audio_buffer.commit');
+        server_connection.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+      }
+
+      // 立刻解绑旧连接的生命周期回调，防止其 onclose/onerror 干扰下一轮
+      // onmessage 保留至多 3s——让 commit 的 completed 回来后仍能更新 DOM
+      // 但 onmessage 内部已通过 connId 守卫，一旦新连接建立就自动忽略旧消息
+      const conn_to_close = server_connection;
+      const closing_conn_id = current_conn_id;
+      if (conn_to_close) {
+        conn_to_close.onopen = null;
+        conn_to_close.onclose = null;
+        conn_to_close.onerror = null;
+        // 若 3s 内已建立新连接（connId 变化），立刻关闭旧连接；否则等 3s 等待 completed
+        setTimeout(() => {
+          conn_to_close.onmessage = null;
+          if (conn_to_close.readyState === WebSocket.OPEN || conn_to_close.readyState === WebSocket.CONNECTING) {
+            conn_to_close.close();
+          }
+        }, 3000);
+        // 同时监听新连接建立，一旦 connId 变化立即关闭
+        const check_interval = setInterval(() => {
+          if (current_conn_id !== closing_conn_id) {
+            clearInterval(check_interval);
+            conn_to_close.onmessage = null;
+            if (conn_to_close.readyState === WebSocket.OPEN || conn_to_close.readyState === WebSocket.CONNECTING) {
+              conn_to_close.close();
+            }
+          }
+        }, 100);
+        setTimeout(() => clearInterval(check_interval), 3100);
+      }
+      server_connection = null;
+
+      // 释放本地电脑硬件资源（AudioContext 不 close，下一轮复用，避免浏览器 autoplay policy 阻塞）
+      pre_capture_chunks = [];  // 清空预录制缓冲
+      if (audio_sender_node) { audio_sender_node.disconnect(); audio_sender_node.onaudioprocess = null; audio_sender_node = null; }
+      if (audio_gain_node) { audio_gain_node.disconnect(); audio_gain_node = null; }
+      if (audio_capture_node) { audio_capture_node.disconnect(); audio_capture_node = null; }
+      if (hardware_microphone_stream) { hardware_microphone_stream.getTracks().forEach(track => track.stop()); hardware_microphone_stream = null; }
+
+      // 恢复 UI
+      is_microphone_working = false;
+      is_audio_capturing = false;
+      is_engine_ready = false;
+      ui_button.innerText = '开始识别';
+      ui_button.disabled = false;
+      ui_button.style.opacity = '';
+      ui_button.style.cursor = '';
+      ui_button.classList.remove('is-working');
+      update_ui_status('active', '等待下一次输入');
+      ui_cursor.style.display = 'none';
+      if (ui_cursor.parentNode !== ui_text_box) {
+        ui_text_box.appendChild(ui_cursor);
+      }
+      if (current_session_block) {
+        current_session_block.classList.remove('active');
+      }
+      // current_turn_node/div 不在此清零，由 commit 的 completed 事件负责清零
+      set_config_locked(false);
+      sync_rollback_state();  // 解锁后重新同步回退策略的启用状态
+      add_log('SYS', '已停止收音');
+    }
+
+    // ----- 当确认模型就绪后，正式开始采集音频 -----
+    function activate_audio_capture() {
+      if (is_audio_capturing) {
+        add_log('SYS', '⚠️ activate_audio_capture 已在采集中, 跳过');
+        return;
+      }
+      add_log('SYS', 'activate_audio_capture 启动');
+      is_audio_capturing = true;
+      is_engine_ready = true;
+
+      const old_loading = document.getElementById('loading_banner');
+      if (old_loading) old_loading.remove();
+
+      update_ui_status('active', '已连接，正在收音');
+      ui_button.innerText = '结束识别';
+      ui_button.disabled = false;
+      ui_button.style.opacity = '';
+      ui_button.style.cursor = '';
+      ui_button.classList.add('is-working');
+
+      const now = new Date();
+      const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+      current_session_block = document.createElement('div');
+      current_session_block.className = 'session-block active';
+      const header = document.createElement('div');
+      header.className = 'session-block-header';
+      header.textContent = ts;
+      current_session_block.appendChild(header);
+      // 确保 ui_cursor 是 ui_text_box 的直接子节点，否则 insertBefore 会抛 NotFoundError
+      if (ui_cursor.parentNode !== ui_text_box) {
+        ui_text_box.appendChild(ui_cursor);
+      }
+      ui_text_box.insertBefore(current_session_block, ui_cursor);
+
+      current_turn_text = "";
+      current_turn_node = null;
+      current_turn_div = null;
+      ui_cursor.style.display = 'inline-block';
+      // begin_capture_and_send_audio 已在 getUserMedia 成功后立即调用（预录制模式）
+      // 这里只需设置 is_audio_capturing=true，onaudioprocess 会自动切换为发送模式并补发历史帧
+      // 降级保护：若预录制阶段 ScriptProcessor 未成功创建（如 AudioContext 异常），在此重试
+      if (!audio_sender_node) {
+        add_log('SYS', '⚠️ ScriptProcessor 未创建，降级重试 begin_capture_and_send_audio');
+        begin_capture_and_send_audio();
+      }
+    }
+
+    // ----- 底层：接收服务器发来的文字 -----
+    function on_receive_message_from_server(event) {
+      const server_data = JSON.parse(event.data);
+
+      if (server_data.type === 'session.created') {
+        const sess = server_data.session || {};
+        const sid = sess.id || '';
+        const extra = sess.extra || {};
+        const td = sess.audio?.input?.turn_detection || {};
+
+        const summary = `td=${td.type || '?'} chunk=${extra.chunk_ms || '?'} history=${extra.use_history ?? '?'} rollback=${extra.rollback?.strategy || 'none'}/${extra.rollback?.value || 0}`;
+        add_log('RECV', 'session.created', `${sid} ${summary}`);
+
+        // 回填服务端默认值到配置面板（空值才回填，不覆盖用户已手动填写的值）
+        if (sess.instructions && !cfg_prompt.value.trim()) {
+          cfg_prompt.value = sess.instructions;
+        }
+        if (extra.chunk_ms && !cfg_chunk_ms.value) {
+          cfg_chunk_ms.value = extra.chunk_ms;
+        }
+
+        const sess_update = build_session_update_payload();
+        if (sess_update && server_connection && server_connection.readyState === WebSocket.OPEN) {
+          server_connection.send(JSON.stringify({ type: 'session.update', session: sess_update }));
+          add_log('SEND', 'session.update', JSON.stringify(sess_update).slice(0, 60));
+        }
+
+        setTimeout(() => {
+          if (!is_audio_capturing && is_microphone_working) {
+            activate_audio_capture();
+          }
+        }, 200);
+        return;
+      }
+
+      function ensure_turn_line() {
+        if (current_turn_node) return;
+        current_turn_text = "";
+        current_turn_div = document.createElement('div');
+        current_turn_div.className = 'turn-line';
+        current_turn_node = document.createTextNode("");
+        current_turn_div.appendChild(current_turn_node);
+        const container = current_session_block || ui_text_box;
+        container.appendChild(current_turn_div);
+        ui_cursor.style.display = 'inline-block';
+        if (current_turn_div) current_turn_div.appendChild(ui_cursor);
+      }
+
+      if (server_data.type === 'input_audio_buffer.speech_started') {
+        const ms = server_data.audio_start_ms || 0;
+        add_log('RECV', 'speech_started', `${ms}ms`);
+        update_ui_status('active', `检测到语音开始 (${ms}ms)`);
+        ensure_turn_line();
+        return;
+      }
+
+      if (server_data.type === 'input_audio_buffer.speech_stopped') {
+        const ms = server_data.audio_end_ms || 0;
+        add_log('RECV', 'speech_stopped', `${ms}ms`);
+        update_ui_status('active', `语音结束 (${ms}ms)，等待结果...`);
+        return;
+      }
+
+      if (server_data.type === 'input_audio_buffer.committed') {
+        add_log('RECV', 'committed', server_data.item_id || '');
+        return;
+      }
+
+
+      if (server_data.type === 'conversation.item.input_audio_transcription.delta') {
+        ensure_turn_line();
+        const cursor = server_data.cursor !== undefined ? server_data.cursor : current_turn_text.length;
+        const delta = server_data.delta || "";
+        const cid = server_data.chunk_id !== undefined ? `#${server_data.chunk_id}` : '';
+
+        if (cursor < current_turn_text.length) {
+          add_log('RECV', `delta${cid} (rollback)`, `cursor=${cursor}, -${current_turn_text.length - cursor}chars, +\"${delta}\"`);
+        } else {
+          add_log('RECV', `delta${cid}`, delta);
+        }
+
+        current_turn_text = current_turn_text.slice(0, cursor) + delta;
+        current_turn_node.textContent = current_turn_text;
+        ui_text_box.scrollTop = ui_text_box.scrollHeight;
+      }
+      else if (server_data.type === 'conversation.item.input_audio_transcription.completed') {
+        add_log('RECV', 'transcription.completed', server_data.transcript || '');
+        if (server_data.transcript !== undefined && current_turn_node) {
+          current_turn_text = server_data.transcript;
+          current_turn_node.textContent = current_turn_text;
+        }
+        if (current_turn_div) {
+          const check = document.createElement('span');
+          check.className = 'turn-check';
+          check.textContent = ' \u2713';
+          current_turn_div.appendChild(check);
+          // cursor 从 turn-line 里移出，放回 session-block 末尾
+          if (current_turn_div.contains(ui_cursor)) {
+            current_turn_div.removeChild(ui_cursor);
+            const cursor_home = current_session_block || ui_text_box;
+            cursor_home.appendChild(ui_cursor);
+          }
+        }
+        ui_text_box.scrollTop = ui_text_box.scrollHeight;
+        current_turn_text = "";
+        current_turn_node = null;
+        current_turn_div = null;
+        if (is_microphone_working) {
+          update_ui_status('active', '已连接，正在收音');
+        }
+      } else {
+        add_log('RECV', server_data.type, "");
+      }
+    }
+
+    // ----- 在识别结果区显示模型加载进度 -----
+    function show_loading_in_result_area(stage) {
+      if (ui_cursor.parentNode !== ui_text_box) {
+        ui_text_box.appendChild(ui_cursor);
+      }
+      let banner = document.getElementById('loading_banner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'loading_banner';
+        banner.className = 'loading-banner';
+        ui_text_box.insertBefore(banner, ui_cursor);
+      }
+      banner.innerHTML = `
+        <div class="loading-banner-spinner"></div>
+        <div class="loading-banner-text">
+          <div class="loading-banner-title">模型加载中，请稍候...</div>
+          <div class="loading-banner-stage">${stage}</div>
+        </div>
+      `;
+      ui_text_box.scrollTop = ui_text_box.scrollHeight;
+    }
+
+    // ----- 底层：将麦克风声音切片并发送 -----
+    const TARGET_SAMPLE_RATE = 16000;
+
+    function begin_capture_and_send_audio() {
+      // 幂等保护：避免重复创建 ScriptProcessor
+      if (audio_sender_node) {
+        add_log('SYS', '⚠️ begin_capture_and_send_audio: ScriptProcessor 已存在，跳过');
+        return;
+      }
+      add_log('SYS', '初始化音频采集...');
+
+      if (!hardware_microphone_stream || hardware_microphone_stream.getTracks().every(t => t.readyState === 'ended')) {
+        add_log('ERR', '麦克风流已失效，无法采集音频');
+        return;
+      }
+
+      if (!audio_processor_engine || audio_processor_engine.state === 'closed') {
+        add_log('ERR', 'AudioContext 不可用 (未创建或已关闭)');
+        return;
+      }
+      if (audio_processor_engine.state === 'suspended') {
+        audio_processor_engine.resume().catch(e => add_log('ERR', 'AudioContext resume 失败: ' + e.message));
+      }
+      add_log('SYS', `AudioContext state=${audio_processor_engine.state}`);
+
+      const actual_sr = audio_processor_engine.sampleRate;
+      const need_resample = actual_sr !== TARGET_SAMPLE_RATE;
+      const resample_ratio = need_resample ? TARGET_SAMPLE_RATE / actual_sr : 1;
+
+      if (need_resample) {
+        add_log('SYS', `采样率不匹配: 浏览器=${actual_sr}Hz, 目标=${TARGET_SAMPLE_RATE}Hz, 将自动重采样`);
+        console.warn(`[AudioCapture] Browser sampleRate=${actual_sr}, target=${TARGET_SAMPLE_RATE}, resample_ratio=${resample_ratio.toFixed(4)}`);
+      } else {
+        add_log('SYS', `音频采样率: ${actual_sr}Hz ✓`);
+      }
+
+      audio_capture_node = audio_processor_engine.createMediaStreamSource(hardware_microphone_stream);
+      audio_sender_node = audio_processor_engine.createScriptProcessor(4096, 1, 1);
+
+      audio_sender_node.onaudioprocess = (event) => {
+        let raw_float_audio = event.inputBuffer.getChannelData(0);
+
+        if (need_resample) {
+          raw_float_audio = resample_linear(raw_float_audio, actual_sr, TARGET_SAMPLE_RATE);
+        }
+
+        const pcm16_audio = convert_float_to_pcm16(raw_float_audio);
+        const base64_audio_string = convert_bytes_to_base64(pcm16_audio.buffer);
+
+        if (!is_audio_capturing) {
+          // 服务器就绪前：缓存到预录制缓冲区（滑动窗口，防止无限增长）
+          pre_capture_chunks.push(base64_audio_string);
+          if (pre_capture_chunks.length > MAX_PRE_CAPTURE_CHUNKS) {
+            pre_capture_chunks.shift();
+          }
+          return;
+        }
+
+        if (!server_connection || server_connection.readyState !== WebSocket.OPEN) return;
+
+        // 服务器刚就绪：先将预录制缓冲中的历史帧补发，弥补等待期间的语音
+        if (pre_capture_chunks.length > 0) {
+          const history = pre_capture_chunks.splice(0);
+          add_log('SYS', `补发预录制音频: ${history.length} 帧 (~${history.length * 256}ms)`);
+          for (const chunk of history) {
+            server_connection.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: chunk }));
+            append_audio_count++;
+          }
+        }
+
+        append_audio_count++;
+        if (append_audio_count === 1) {
+          add_log('SYS', `首帧音频（实时）: ${pcm16_audio.length} samples (${(pcm16_audio.length/TARGET_SAMPLE_RATE*1000).toFixed(0)}ms), PCM16 ${pcm16_audio.byteLength}B`);
+        }
+        if (append_audio_count % 30 === 0) {
+          add_log('SEND', 'input_audio_buffer.append', `(已发送 ${append_audio_count} 个切片)`);
+        }
+
+        server_connection.send(JSON.stringify({
+          type: 'input_audio_buffer.append',
+          audio: base64_audio_string
+        }));
+      };
+
+      audio_gain_node = audio_processor_engine.createGain();
+      audio_gain_node.gain.value = 0;
+
+      audio_capture_node.connect(audio_sender_node);
+      audio_sender_node.connect(audio_gain_node);
+      audio_gain_node.connect(audio_processor_engine.destination);
+    }
+
+    // ----- 底层工具：音频格式转换 -----
+
+    /**
+     * 线性插值重采样（与 client.py 的 librosa.load(sr=16000) 对齐）。
+     * 当浏览器 AudioContext 实际采样率不是 16000 时使用。
+     */
+    function resample_linear(input_float32, from_sr, to_sr) {
+      if (from_sr === to_sr) return input_float32;
+      const ratio = from_sr / to_sr;
+      const out_len = Math.round(input_float32.length / ratio);
+      const output = new Float32Array(out_len);
+      for (let i = 0; i < out_len; i++) {
+        const src_idx = i * ratio;
+        const idx0 = Math.floor(src_idx);
+        const idx1 = Math.min(idx0 + 1, input_float32.length - 1);
+        const frac = src_idx - idx0;
+        output[i] = input_float32[idx0] * (1 - frac) + input_float32[idx1] * frac;
+      }
+      return output;
+    }
+
+    /**
+     * Float32 [-1,1] → PCM16 Int16Array
+     * 与 client.py 的 (audio_f32 * 32767).astype(np.int16) 对齐
+     */
+    function convert_float_to_pcm16(float_array) {
+      const int16_array = new Int16Array(float_array.length);
+      for (let i = 0; i < float_array.length; i++) {
+        const clamped = Math.max(-1, Math.min(1, float_array[i]));
+        int16_array[i] = clamped < 0 ? clamped * 32768 : clamped * 32767;
+      }
+      return int16_array;
+    }
+
+    function convert_bytes_to_base64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary_string = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary_string += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary_string);
+    }
+
+    // =========================================
+    // 文件上传模式：选择音频文件 → 解码 → 重采样 16kHz → 分包发送
+    // 与 client.py 完全对齐：librosa.load(sr=16000) → PCM16 → base64 → WebSocket
+    // =========================================
+
+    ui_upload_button.addEventListener('click', () => {
+      if (is_file_uploading || is_microphone_working) return;
+      ui_file_input.click();
+    });
+
+    ui_file_input.addEventListener('change', async (evt) => {
+      const file = evt.target.files[0];
+      if (!file) return;
+      ui_file_input.value = '';
+      await upload_and_transcribe_file(file);
+    });
+
+    async function upload_and_transcribe_file(file) {
+      if (is_file_uploading || is_microphone_working) return;
+      is_file_uploading = true;
+
+      ui_upload_button.innerText = '发送中...';
+      ui_upload_button.classList.add('is-sending');
+      ui_upload_button.disabled = true;
+      ui_button.disabled = true;
+      ui_button.style.opacity = '0.5';
+
+      const fname = file.name;
+      const PACKET_MS = 100;
+      const packet_samples = Math.floor(TARGET_SAMPLE_RATE * PACKET_MS / 1000);
+
+      add_log('SYS', `上传音频: ${fname} (${(file.size/1024).toFixed(1)}KB)`);
+
+      try {
+        // 1. 读取文件 → ArrayBuffer
+        const array_buffer = await file.arrayBuffer();
+
+        // 2. 解码音频（用临时 AudioContext，兼容性最好）
+        const decode_ctx = new (window.AudioContext || window.webkitAudioContext)();
+        let audio_buffer;
+        try {
+          audio_buffer = await decode_ctx.decodeAudioData(array_buffer);
+        } catch (e) {
+          add_log('ERR', '音频解码失败', e.message);
+          alert(`无法解码音频文件 "${fname}"：${e.message}`);
+          reset_upload_ui();
+          decode_ctx.close();
+          return;
+        }
+        decode_ctx.close();
+
+        // 3. 提取单声道 + 重采样到 16kHz（OfflineAudioContext 方式，精度高于线性插值）
+        const original_sr = audio_buffer.sampleRate;
+        const original_len = audio_buffer.length;
+        let mono_16k;
+
+        if (original_sr === TARGET_SAMPLE_RATE && audio_buffer.numberOfChannels === 1) {
+          mono_16k = audio_buffer.getChannelData(0);
+        } else {
+          const target_len = Math.round(original_len * TARGET_SAMPLE_RATE / original_sr);
+          const offline_ctx = new OfflineAudioContext(1, target_len, TARGET_SAMPLE_RATE);
+          const source = offline_ctx.createBufferSource();
+          source.buffer = audio_buffer;
+          source.connect(offline_ctx.destination);
+          source.start(0);
+          const rendered = await offline_ctx.startRendering();
+          mono_16k = rendered.getChannelData(0);
+        }
+
+        const duration_sec = mono_16k.length / TARGET_SAMPLE_RATE;
+        add_log('SYS', `解码完成: ${original_sr}Hz → ${TARGET_SAMPLE_RATE}Hz, ${duration_sec.toFixed(2)}s, ${mono_16k.length} samples`);
+
+        // 4. Float32 → PCM16（与 client.py 对齐）
+        const pcm16 = convert_float_to_pcm16(mono_16k);
+
+        // 5. 分包
+        const packets = [];
+        for (let start = 0; start < pcm16.length; start += packet_samples) {
+          const end = Math.min(start + packet_samples, pcm16.length);
+          packets.push(pcm16.slice(start, end));
+        }
+
+        add_log('SYS', `分包: ${packets.length} 包, 每包 ${PACKET_MS}ms (${packet_samples} samples)`);
+
+        // 6. 轮询 /health，确认模型就绪后再连 WebSocket
+        add_log('SYS', '检查模型就绪状态...');
+        await poll_health_until_ready();
+        add_log('SYS', '模型已就绪');
+
+        const ws = new WebSocket(server_websocket_url);
+        update_ui_status('active', '文件上传: 已连接');
+
+        const ws_ready = new Promise((resolve, reject) => {
+          ws.onopen = () => resolve();
+          ws.onerror = () => reject(new Error('WebSocket 连接失败'));
+          setTimeout(() => reject(new Error('WebSocket 连接超时')), 10000);
+        });
+
+        await ws_ready;
+        add_log('SYS', '文件模式: WebSocket 已连接');
+
+        // 等待 session.created（模型已就绪，直接 200ms 后 resolve）
+        let file_session_id = '';
+        const ready_promise = new Promise((resolve) => {
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'session.created') {
+              file_session_id = data.session?.id || '';
+              add_log('RECV', 'session.created', file_session_id);
+              const sess_update = build_session_update_payload();
+              if (sess_update) {
+                ws.send(JSON.stringify({ type: 'session.update', session: sess_update }));
+                add_log('SEND', 'session.update', JSON.stringify(sess_update).slice(0, 60));
+              }
+              setTimeout(() => resolve(), 200);
+            }
+          };
+        });
+        await ready_promise;
+        add_log('SYS', '模型就绪，开始发送音频包');
+
+        // 准备 UI — 文件上传也用 session-block 结构
+        if (ui_cursor.parentNode !== ui_text_box) {
+          ui_text_box.appendChild(ui_cursor);
+        }
+        const file_block = document.createElement('div');
+        file_block.className = 'session-block';
+        const file_header = document.createElement('div');
+        file_header.className = 'session-block-header';
+        file_header.innerHTML = `<span style="color:#8b5cf6;font-weight:600;">📁 ${fname}</span> ${duration_sec.toFixed(1)}s`;
+        file_block.appendChild(file_header);
+        ui_text_box.insertBefore(file_block, ui_cursor);
+
+        current_turn_div = document.createElement('div');
+        current_turn_div.className = 'turn-line';
+        current_turn_text = "";
+        current_turn_node = document.createTextNode("");
+        current_turn_div.appendChild(current_turn_node);
+        file_block.appendChild(current_turn_div);
+        ui_cursor.style.display = 'inline-block';
+        current_turn_div.appendChild(ui_cursor);
+
+        // 7. 接收识别结果（切换 onmessage）
+        let file_final_transcript = "";
+        const completed_event = new Promise((resolve) => {
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'conversation.item.input_audio_transcription.delta') {
+              const cursor = data.cursor !== undefined ? data.cursor : current_turn_text.length;
+              const delta = data.delta || "";
+              current_turn_text = current_turn_text.slice(0, cursor) + delta;
+              if (current_turn_node) current_turn_node.textContent = current_turn_text;
+              ui_text_box.scrollTop = ui_text_box.scrollHeight;
+            } else if (data.type === 'conversation.item.input_audio_transcription.completed') {
+              if (data.transcript !== undefined && current_turn_node) {
+                current_turn_text = data.transcript;
+                current_turn_node.textContent = current_turn_text;
+              }
+              file_final_transcript = data.transcript || current_turn_text;
+              add_log('RECV', 'completed', `"${file_final_transcript.slice(0, 60)}"`);
+            } else if (data.type === 'response.done') {
+              resolve();
+            }
+          };
+        });
+
+        // 8. 按真实时间节奏发送音频包（模拟实时流式，与麦克风行为一致）
+        // 服务端会按 chunk_ms 间隔做流式推理，而不是一次性拿到全部音频
+        const send_t0 = performance.now();
+        for (let i = 0; i < packets.length; i++) {
+          const b64 = convert_bytes_to_base64(packets[i].buffer);
+          ws.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: b64 }));
+
+          if ((i + 1) % Math.max(1, Math.floor(packets.length / 5)) === 0 || i === packets.length - 1) {
+            const pkt_time = (i + 1) * PACKET_MS / 1000;
+            add_log('SEND', 'append', `${i+1}/${packets.length} (${pkt_time.toFixed(1)}s/${duration_sec.toFixed(1)}s)`);
+            ui_upload_button.innerText = `发送 ${Math.round((i+1)/packets.length*100)}%`;
+          }
+
+          // 按真实时间节奏等待，让服务器有时间按 chunk_ms 做流式推理
+          const target_time = (i + 1) * PACKET_MS;
+          const elapsed = performance.now() - send_t0;
+          const wait = target_time - elapsed;
+          if (wait > 0) {
+            await new Promise(r => setTimeout(r, wait));
+          }
+        }
+
+        // 9. commit
+        ws.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+        const send_cost = ((performance.now() - send_t0) / 1000).toFixed(2);
+        add_log('SEND', 'commit', `${packets.length} 包已发送 (${send_cost}s, 模拟实时)`);
+        ui_upload_button.innerText = '等待结果...';
+
+        // 10. 等待结果
+        await Promise.race([
+          completed_event,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('等待结果超时')), 120000)),
+        ]);
+
+        // 完成标记
+        ui_cursor.style.display = 'none';
+        if (current_turn_div) {
+          const check = document.createElement('span');
+          check.className = 'turn-check';
+          check.textContent = ' \u2713';
+          current_turn_div.appendChild(check);
+          if (current_turn_div.contains(ui_cursor)) {
+            current_turn_div.removeChild(ui_cursor);
+          }
+        }
+        if (ui_cursor.parentNode !== ui_text_box) {
+          ui_text_box.appendChild(ui_cursor);
+        }
+        ui_text_box.scrollTop = ui_text_box.scrollHeight;
+        current_turn_text = "";
+        current_turn_node = null;
+        current_turn_div = null;
+
+        add_log('SYS', `文件识别完成: "${(file_final_transcript || '').slice(0, 80)}"`);
+        ws.close();
+
+      } catch (err) {
+        add_log('ERR', '文件上传失败', err.message);
+        update_ui_status('error', '文件上传失败');
+      } finally {
+        reset_upload_ui();
+      }
+    }
+
+    function reset_upload_ui() {
+      is_file_uploading = false;
+      ui_upload_button.innerText = '上传音频';
+      ui_upload_button.classList.remove('is-sending');
+      ui_upload_button.disabled = false;
+      ui_button.disabled = false;
+      ui_button.style.opacity = '';
+      update_ui_status('active', '等待下一次输入');
+    }
+  </script>
+</body>
+</html>
