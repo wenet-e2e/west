@@ -18,24 +18,6 @@ from transformers.trainer_pt_utils import LabelSmoother
 from west.dataset.extractor import Extractor
 
 
-def _tar_sample_get_field(sample: dict, name: str):
-    """Resolve webdataset/tar field by exact key or suffix ``.<name>``.
-
-    Examples: ``txt`` / ``wav.txt`` -> ``txt``; ``wav`` / ``clip.wav`` -> ``wav``.
-    Prefers exact key ``name``; otherwise first key (sorted) ending with ``.<name>``.
-    Skips dunder keys like ``__key__``.
-    """
-    if name in sample:
-        return sample[name]
-    suf = '.' + name
-    for k in sorted(sample.keys()):
-        if not isinstance(k, str) or k.startswith('__'):
-            continue
-        if k.endswith(suf):
-            return sample[k]
-    return None
-
-
 @dataclass
 class DataArguments:
     data_path: str = field(default=None,
@@ -44,7 +26,7 @@ class DataArguments:
         default=None,
         metadata={
             "help":
-            "TouchFlow SFT: JSON mapping spk_id -> prompt wav for mel_speaker. "
+            "TouchFlow SFT: JSON mapping spk_id -> prompt wav for mel_speaker."
         })
     batch_size: int = field(default=1, metadata={"help": "batch size"})
     pack_size: int = field(
@@ -126,50 +108,9 @@ class SpeechDataset(IterableDataset):
                         data = wds.tarfile_samples(src)
                         for x in data:
                             try:
-                                txt_val = _tar_sample_get_field(x, 'txt')
-                                wav_val = _tar_sample_get_field(x, 'wav')
-                                if txt_val is None or wav_val is None:
-                                    logging.warning(
-                                        'Dataset tar sample missing required txt '
-                                        'or wav, skip. url=%s keys=%s',
-                                        line, list(x.keys()))
-                                    continue
-                                out = {}
-                                if isinstance(txt_val, bytes):
-                                    out['txt'] = txt_val.decode('utf8')
-                                elif isinstance(txt_val, str):
-                                    out['txt'] = txt_val
-                                else:
-                                    logging.warning(
-                                        'Dataset tar txt must be bytes or str, '
-                                        'got %s, url=%s',
-                                        type(txt_val), line)
-                                    continue
-                                if not isinstance(wav_val, bytes):
-                                    logging.warning(
-                                        'Dataset tar wav must be bytes, '
-                                        'got %s, url=%s',
-                                        type(wav_val), line)
-                                    continue
-                                out['wav'] = io.BytesIO(wav_val)
-                                # for sft mode, spk & instruction are optional
-                                for opt_key in ('spk', 'ins'):
-                                    v = _tar_sample_get_field(x, opt_key)
-                                    if v is None:
-                                        continue
-                                    if isinstance(v, bytes):
-                                        out[opt_key] = v.decode('utf8')
-                                    elif isinstance(v, str):
-                                        out[opt_key] = v
-                                    else:
-                                        logging.warning(
-                                            'Dataset tar %s must be bytes or str, '
-                                            'got %s, url=%s',
-                                            opt_key, type(v), line)
-                                for meta in ('__key__', '__url__'):
-                                    if meta in x:
-                                        out[meta] = x[meta]
-                                yield out
+                                x['txt'] = x['txt'].decode('utf8')
+                                x['wav'] = io.BytesIO(x['wav'])
+                                yield x
                             except Exception as e:
                                 logging.info(f'Dataset decode error, {line}, {e}')
                                 continue
