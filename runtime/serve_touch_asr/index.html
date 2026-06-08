@@ -3,13 +3,58 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>流式语音识别体验</title>
+  <title>REALTIME ASR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Doto:wght@400;700&family=Space+Grotesk:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    /* 全局样式 - 清爽简洁的圆角风格 */
+    /* Nothing Design System — 设计令牌 */
+    :root {
+      /* 深色模式（默认） */
+      --black: #000000;
+      --surface: #111111;
+      --surface-raised: #1A1A1A;
+      --border: #222222;
+      --border-visible: #333333;
+      --text-disabled: #666666;
+      --text-secondary: #999999;
+      --text-primary: #E8E8E8;
+      --text-display: #FFFFFF;
+      --accent: #D71921;
+      --accent-subtle: rgba(215,25,33,0.15);
+      --success: #4A9E5C;
+      --warning: #D4A843;
+
+      --space-xs: 4px;
+      --space-sm: 8px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+      --space-2xl: 48px;
+    }
+
+    /* 浅色模式（温暖米白） */
+    :root[data-theme="light"] {
+      --black: #F5F5F3;
+      --surface: #EAEAE8;
+      --surface-raised: #DFDFDD;
+      --border: #D0D0CE;
+      --border-visible: #BBBBBA;
+      --text-disabled: #8A8A8A;
+      --text-secondary: #555555;
+      --text-primary: #1A1A1A;
+      --text-display: #000000;
+      --accent-subtle: rgba(215,25,33,0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    /* 全局样式 — OLED 纯黑底 + Space Mono 统一字体 */
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #f7f9fc;
-      color: #333;
+      font-family: "Space Mono", "JetBrains Mono", monospace;
+      font-weight: 400;
+      background-color: var(--black);
+      color: var(--text-primary);
       margin: 0;
       padding: 0;
       height: 100vh;
@@ -17,118 +62,115 @@
       flex-direction: column;
     }
 
+    /* 顶部状态栏 */
     .header {
-      background-color: #fff;
-      padding: 15px 30px;
-      font-size: 20px;
-      font-weight: 600;
-      border-bottom: 1px solid #eaeaea;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+      padding: 15px var(--space-lg);
       display: flex;
       align-items: center;
       justify-content: space-between;
+      border-bottom: 2px solid var(--border-visible);
       flex-shrink: 0;
     }
 
+    .header-title {
+      font-family: "Doto", "Space Mono", monospace;
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-display);
+    }
+
     .status-badge {
-      font-size: 14px;
-      font-weight: normal;
-      color: #666;
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--space-sm);
     }
 
     .indicator-dot {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      background-color: #ccc;
-      transition: background-color 0.3s;
+      background-color: var(--text-disabled);
+      transition: background-color 0.2s ease-out;
     }
-    .indicator-dot.active { background-color: #10b981; }
-    .indicator-dot.error { background-color: #ef4444; }
+    .indicator-dot.active { background-color: var(--success); }
+    .indicator-dot.error { background-color: var(--accent); }
 
     /* 布局容器：左右分栏 */
     .main-container {
       display: flex;
       flex: 1;
-      padding: 24px;
-      gap: 24px;
-      height: calc(100vh - 61px);
-      box-sizing: border-box;
+      gap: 2px;
+      background: var(--border-visible);
       overflow: hidden;
     }
 
-    /* 左侧：识别结果与控制区 */
+    /* 左侧：识别结果与控制区 (黄金比例 61.8%) */
     .left-panel {
-      flex: 1;
+      flex: 1.618;
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      background: var(--black);
       min-width: 0;
       min-height: 0;
     }
 
-    /* 右侧：事件日志区 */
+    /* 右侧：事件日志区 (黄金比例 38.2%) */
     .right-panel {
-      width: 400px;
-      background: #fff;
-      border-radius: 12px;
-      border: 1px solid #eaeaea;
+      flex: 1;
+      background: var(--surface);
       display: flex;
       flex-direction: column;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
       flex-shrink: 0;
       min-height: 0;
       overflow: hidden;
     }
 
-    /* 卡片通用样式 */
-    .card {
-      background: #fff;
-      border-radius: 12px;
-      border: 1px solid #eaeaea;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
-      display: flex;
-      flex-direction: column;
+    /* 分区标签 — Space Mono 全大写 */
+    .section-label {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 2px solid var(--border-visible);
     }
 
-    .card-header {
-      padding: 16px 20px;
-      font-size: 16px;
-      font-weight: 600;
-      border-bottom: 1px solid #f0f0f0;
-      background-color: #fafafa;
-      border-top-left-radius: 12px;
-      border-top-right-radius: 12px;
-      color: #1f2937;
-    }
-
-    /* 文本展示区 */
+    /* 文本展示区 — 点阵网格背景 */
     .text-display-area {
       flex: 1;
-      padding: 20px;
+      padding: var(--space-lg);
       overflow-y: auto;
       font-size: 16px;
-      line-height: 1.8;
-      color: #374151;
+      line-height: 1.6;
+      color: var(--text-primary);
+      background-image: radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
+      background-size: 16px 16px;
     }
 
     .session-block {
-      margin-bottom: 16px;
+      margin-bottom: var(--space-md);
     }
     .session-block:not(:first-child) {
-      border-top: 1px solid #e5e7eb;
-      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      padding-top: var(--space-md);
     }
     .session-block-header {
+      font-family: "Space Mono", monospace;
       font-size: 12px;
-      color: #9ca3af;
-      margin-bottom: 6px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-disabled);
+      margin-bottom: var(--space-sm);
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: var(--space-sm);
     }
     .session-block-header::before {
       content: '';
@@ -136,155 +178,268 @@
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #d1d5db;
+      background: var(--text-disabled);
     }
     .session-block.active .session-block-header::before {
-      background: #10b981;
+      background: var(--accent);
     }
     .turn-line {
       padding: 2px 0;
       white-space: pre-wrap;
       word-break: break-all;
+      font-family: -apple-system, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+      font-weight: 300;
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text-display);
     }
     .turn-line .turn-check {
-      color: #10b981;
+      color: var(--success);
       font-size: 14px;
-      margin-left: 4px;
+      margin-left: var(--space-xs);
+    }
+
+    /* 历史分隔标签 */
+    .history-label {
+      font-family: "Space Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-disabled);
+      padding: var(--space-md) 0;
+      margin-top: var(--space-md);
+      border-top: 1px solid var(--border-visible);
     }
 
     /* 日志展示区 */
     .log-display-area {
       flex: 1;
-      padding: 16px;
+      padding: var(--space-md);
       overflow-y: auto;
+      font-family: "Space Mono", monospace;
       font-size: 13px;
-      line-height: 1.5;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      color: #4b5563;
-      background-color: #fafafa;
-      border-bottom-left-radius: 12px;
-      border-bottom-right-radius: 12px;
+      line-height: 1.35;
+      color: var(--text-secondary);
     }
 
     .log-entry {
-      margin-bottom: 8px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #eee;
+      margin-bottom: 5px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid var(--border);
       word-break: break-all;
     }
     .log-time {
-      color: #9ca3af;
-      margin-right: 8px;
+      color: var(--text-disabled);
+      margin-right: var(--space-sm);
       font-size: 12px;
     }
-    .log-type-send { color: #3b82f6; font-weight: 600; }
-    .log-type-recv { color: #10b981; font-weight: 600; }
+    .log-type-send { color: var(--text-display); font-weight: 700; }
+    .log-type-recv { color: var(--success); font-weight: 700; }
 
-    /* 底部控制区 */
-    .control-panel {
-      padding: 20px;
+    /* 顶部操作条 — 按钮 + 内联参数 */
+    .toolbar {
       display: flex;
       align-items: center;
-      justify-content: center;
-      margin-top: auto;
+      gap: var(--space-md);
+      padding: 12px var(--space-lg);
+      border-bottom: 2px solid var(--border-visible);
+      flex-shrink: 0;
+    }
+
+    .toolbar-params {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+      margin-left: auto;
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary);
+    }
+
+    .toolbar-param {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .toolbar-param label {
+      text-transform: uppercase;
+      color: var(--text-disabled);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+    }
+
+    .toolbar-param input,
+    .toolbar-param select {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border-visible);
+      color: var(--text-primary);
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      padding: 2px 4px;
+      outline: none;
+      width: 60px;
+      border-radius: 0;
+    }
+    .toolbar-param select {
+      width: auto;
+      min-width: 80px;
+      -webkit-appearance: none;
+      appearance: none;
+      cursor: pointer;
+      padding-right: 16px;
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 2px center;
+    }
+    .toolbar-param input:focus,
+    .toolbar-param select:focus {
+      border-bottom-color: var(--text-primary);
+    }
+
+    .toolbar-gear {
+      font-family: "Space Mono", monospace;
+      font-size: 14px;
+      color: var(--text-disabled);
+      cursor: pointer;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      user-select: none;
+      transition: border-color 0.2s ease-out, color 0.2s ease-out;
+    }
+    .toolbar-gear:hover {
+      color: var(--text-primary);
+      border-color: var(--border-visible);
+    }
+    .toolbar-gear.active {
+      color: var(--text-display);
+      border-color: var(--text-secondary);
     }
 
     .action-button {
-      padding: 14px 40px;
-      font-size: 18px;
-      font-weight: 600;
-      border: none;
-      border-radius: 50px;
+      font-family: "Space Mono", monospace;
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 8px 24px;
+      border: 1px solid var(--border-visible);
+      border-radius: 999px;
       cursor: pointer;
-      color: white;
-      background-color: #3b82f6;
-      transition: all 0.2s ease;
-      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-      width: 100%;
-      max-width: 400px;
+      color: var(--text-primary);
+      background: transparent;
+      transition: border-color 0.2s ease-out, color 0.2s ease-out;
+      min-height: 44px;
+      white-space: nowrap;
     }
 
     .action-button:hover {
-      background-color: #2563eb;
-      transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+      border-color: var(--text-primary);
+      color: var(--text-display);
     }
 
     .action-button.is-working {
-      background-color: #ef4444;
-      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+      background: var(--text-display);
+      color: var(--black);
+      border-color: var(--text-display);
     }
 
     .action-button.is-working:hover {
-      background-color: #dc2626;
-      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--text-display);
     }
 
     .action-button.upload-btn {
-      background-color: #8b5cf6;
-      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+      border-color: var(--border-visible);
+      color: var(--text-secondary);
     }
     .action-button.upload-btn:hover {
-      background-color: #7c3aed;
-      box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+      border-color: var(--text-secondary);
+      color: var(--text-primary);
     }
     .action-button.upload-btn.is-sending {
-      background-color: #f59e0b;
-      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+      border-color: var(--warning);
+      color: var(--warning);
       cursor: not-allowed;
     }
 
-    .file-info {
-      font-size: 13px;
-      color: #6b7280;
-      text-align: center;
-      padding: 4px 0 0;
+    .waveform-container {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 16px;
+      margin-left: var(--space-sm);
+    }
+    .waveform-bar {
+      width: 4px;
+      height: 2px;
+      background-color: var(--text-primary);
+      transition: height 0.05s ease-out;
+      border-radius: 0;
     }
 
-    /* 配置面板 */
-    .config-toggle {
-      font-size: 13px;
-      color: #6b7280;
-      cursor: pointer;
-      user-select: none;
-      text-align: center;
-      padding: 6px 0;
+    .action-button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
-    .config-toggle:hover { color: #3b82f6; }
+
+    /* 配置面板 — 折叠在操作条下方 */
     .config-panel {
       display: none;
-      padding: 12px 20px 4px;
-      border-top: 1px solid #f0f0f0;
+      padding: var(--space-sm) var(--space-lg);
+      border-bottom: 1px solid var(--border-visible);
+      background: var(--surface);
     }
     .config-panel.open { display: block; }
+
     .config-row {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
       font-size: 13px;
     }
     .config-row label {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
       width: 90px;
       flex-shrink: 0;
-      color: #4b5563;
-      font-weight: 500;
+      color: var(--text-secondary);
     }
     .config-row input[type="number"],
     .config-row input[type="text"],
     .config-row select {
       flex: 1;
-      padding: 5px 8px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
+      padding: 6px 8px;
+      border: none;
+      border-bottom: 1px solid var(--border-visible);
+      font-family: "Space Mono", monospace;
       font-size: 13px;
-      background: #fff;
+      background: transparent;
+      color: var(--text-primary);
       outline: none;
+      border-radius: 0;
+      min-width: 0;
     }
     .config-row input:focus, .config-row select:focus {
-      border-color: #3b82f6;
-      box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+      border-bottom-color: var(--text-primary);
     }
+    .config-row select {
+      -webkit-appearance: none;
+      appearance: none;
+      cursor: pointer;
+      padding-right: 20px;
+      background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%23999999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 4px center;
+    }
+
     .config-row .toggle-switch {
       position: relative;
       width: 36px;
@@ -295,36 +450,36 @@
     .config-row .toggle-switch .slider {
       position: absolute;
       inset: 0;
-      background: #d1d5db;
-      border-radius: 10px;
-      transition: 0.2s;
+      background: var(--border-visible);
+      border-radius: 999px;
+      transition: background 0.2s ease-out;
     }
     .config-row .toggle-switch .slider::before {
       content: '';
       position: absolute;
       width: 16px; height: 16px;
       left: 2px; top: 2px;
-      background: #fff;
+      background: var(--text-disabled);
       border-radius: 50%;
-      transition: 0.2s;
+      transition: transform 0.2s ease-out, background 0.2s ease-out;
     }
     .config-row .toggle-switch input:checked + .slider {
-      background: #3b82f6;
+      background: var(--text-display);
     }
     .config-row .toggle-switch input:checked + .slider::before {
       transform: translateX(16px);
+      background: var(--black);
     }
 
-    /* 打字机光标 */
+    /* 打字机光标 — 红色强调，机械闪烁 */
     .typing-cursor {
       display: inline-block;
-      width: 4px;
+      width: 2px;
       height: 18px;
-      background-color: #3b82f6;
+      background-color: var(--accent);
       vertical-align: middle;
-      animation: blink 1s infinite;
-      margin-left: 4px;
-      border-radius: 2px;
+      animation: blink 1s step-end infinite;
+      margin-left: 2px;
     }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
@@ -332,33 +487,34 @@
     .loading-banner {
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 16px;
-      margin: 8px 0;
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
+      gap: var(--space-md);
+      padding: var(--space-md);
+      margin: var(--space-sm) 0;
+      border: 1px solid var(--border-visible);
       border-radius: 8px;
-      animation: fadeSlideIn 0.3s ease-out;
+      animation: fadeIn 0.2s ease-out;
     }
     .loading-banner-spinner {
-      width: 24px;
-      height: 24px;
-      border: 3px solid #bfdbfe;
-      border-top-color: #3b82f6;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border-visible);
+      border-top-color: var(--text-display);
       border-radius: 50%;
       flex-shrink: 0;
       animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading-banner-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: #1d4ed8;
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-primary);
       margin-bottom: 2px;
     }
     .loading-banner-stage {
-      font-size: 13px;
-      color: #3b82f6;
+      font-size: 12px;
+      color: var(--text-secondary);
       line-height: 1.4;
     }
 
@@ -366,48 +522,88 @@
     .error-banner {
       display: flex;
       align-items: flex-start;
-      gap: 12px;
-      padding: 16px;
-      margin: 8px 0;
-      background: #fef2f2;
-      border: 1px solid #fecaca;
+      gap: var(--space-md);
+      padding: var(--space-md);
+      margin: var(--space-sm) 0;
+      border: 1px solid var(--accent);
       border-radius: 8px;
-      animation: fadeSlideIn 0.3s ease-out;
+      animation: fadeIn 0.2s ease-out;
     }
-    @keyframes fadeSlideIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
-    .error-banner-icon {
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
+    .error-banner-icon { flex-shrink: 0; margin-top: 2px; }
     .error-banner-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: #dc2626;
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
       margin-bottom: 4px;
     }
     .error-banner-detail {
       font-size: 13px;
-      color: #991b1b;
+      color: var(--text-secondary);
       line-height: 1.5;
     }
 
     /* 滚动条美化 */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-visible); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-disabled); }
+
+    /* 日志计数器 */
+    .log-counter {
+      font-family: "Space Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--text-disabled);
     }
-    ::-webkit-scrollbar-track {
+
+    /* 模式切换按钮 */
+    .theme-toggle-btn {
+      font-family: "Space Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 8px;
       background: transparent;
+      border: 1px solid var(--border-visible);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s ease-out;
+      border-radius: 4px;
     }
-    ::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 3px;
+    .theme-toggle-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--text-primary);
     }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #9ca3af;
+
+    /* 服务器状态指示器 */
+    .server-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--text-disabled);
+      margin-left: var(--space-sm);
+      transition: background-color 0.2s ease-out;
+      flex-shrink: 0;
+    }
+    .server-status-dot.checking {
+      background-color: var(--warning);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .server-status-dot.online {
+      background-color: var(--success);
+    }
+    .server-status-dot.offline {
+      background-color: var(--accent);
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
     }
   </style>
 </head>
@@ -415,10 +611,25 @@
 
   <!-- 顶部状态栏 -->
   <div class="header">
-    <div>Qwen3-Omni 语音识别</div>
-    <div class="status-badge">
-      <div id="connection_indicator" class="indicator-dot"></div>
-      <span id="connection_status_text">尚未连接</span>
+    <div style="display:flex; align-items:center; gap:var(--space-lg)">
+      <div class="header-title">REALTIME ASR</div>
+      <div id="audio_waveform" class="waveform-container" style="margin-left:0; opacity:0.3; transition:opacity 0.2s ease-out">
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:var(--space-lg)">
+      <button id="theme_toggle_button" class="theme-toggle-btn">LIGHT MODE</button>
+      <div class="status-badge">
+        <div id="connection_indicator" class="indicator-dot"></div>
+        <span id="connection_status_text">DISCONNECTED</span>
+      </div>
     </div>
   </div>
 
@@ -427,81 +638,172 @@
 
     <!-- 左侧区域 -->
     <div class="left-panel">
-      <!-- 识别结果展示区 -->
-      <div class="card" style="flex: 1; min-height: 0; overflow: hidden;">
-        <div class="card-header">在线 ASR 结果</div>
-        <div class="text-display-area" id="result_text_box">
-          <span class="typing-cursor" id="cursor_element" style="display: none;"></span>
+      <!-- 操作条：按钮 + 内联关键参数 + gear 展开详细配置 -->
+      <div class="toolbar">
+        <button id="toggle_mic_button" class="action-button">START</button>
+        <button id="upload_audio_button" class="action-button upload-btn">UPLOAD</button>
+        <input type="file" id="audio_file_input" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.opus" style="display: none;" />
+        <div class="toolbar-params">
+          <div class="toolbar-param">
+            <label>CHUNK</label>
+            <input type="number" id="cfg_chunk_ms" value="1000" min="200" max="10000" step="100">
+          </div>
+          <div class="toolbar-param">
+            <label>TURN</label>
+            <select id="cfg_turn_detection">
+              <option value="none">none</option>
+              <option value="server_vad" selected>vad</option>
+            </select>
+          </div>
+          <div class="toolbar-gear" id="config_toggle">+</div>
         </div>
       </div>
 
-      <!-- 底部控制按钮 + 配置 -->
-      <div class="card" style="flex-shrink: 0;">
-        <div class="config-toggle" id="config_toggle">&#9881; 推理配置 ▾</div>
-        <div class="config-panel" id="config_panel">
-          <div class="config-row">
-            <label>chunk_ms</label>
-            <input type="number" id="cfg_chunk_ms" value="1000" min="200" max="10000" step="100" placeholder="默认 1000">
-          </div>
-          <div class="config-row">
-            <label>prompt</label>
-            <input type="text" id="cfg_prompt" value="请转录这段音频。" placeholder="默认: 请转录这段音频。">
-          </div>
-          <div class="config-row">
-            <label>历史拼接</label>
-            <label class="toggle-switch">
-              <input type="checkbox" id="cfg_use_history" checked>
-              <span class="slider"></span>
-            </label>
-            <span style="color:#9ca3af;font-size:12px;margin-right:12px" id="cfg_history_label">开启</span>
-            <span style="color:#9ca3af;font-size:12px;margin-right:6px">回退</span>
-            <span id="cfg_rollback_row" style="display:flex;align-items:center;gap:6px">
-              <select id="cfg_rollback_strategy">
-                <option value="none">none</option>
-                <option value="ratio">ratio</option>
-                <option value="chars">chars</option>
-                <option value="words">words</option>
-              </select>
-              <input type="number" id="cfg_rollback_value" value="0" min="0" step="0.1" style="width:60px;flex:none" placeholder="值">
-            </span>
-          </div>
-          <div class="config-row" style="flex-wrap:wrap">
-            <label>话轮检测</label>
-            <select id="cfg_turn_detection" style="flex:0 0 auto;width:auto;min-width:180px">
-              <option value="none" selected>none (手动提交)</option>
-              <option value="server_vad">server_vad (自动端点)</option>
+      <!-- 详细配置（点 gear 展开） -->
+      <div class="config-panel" id="config_panel">
+        <div class="config-row">
+          <label>SERVER</label>
+          <select id="cfg_server_preset"></select>
+          <input type="text" id="cfg_custom_host" placeholder="ws(s)://host:port" style="display:none;flex:1">
+          <button type="button" id="cfg_auto_server_button" style="display:none;flex:none;padding:6px 10px;border:1px solid var(--border-visible);background:transparent;color:var(--text-primary);font-family:'Space Mono',monospace;font-size:12px;cursor:pointer">AUTO</button>
+          <span class="server-status-dot" id="server_status_dot"></span>
+        </div>
+        <div class="config-row">
+          <label>PROMPT</label>
+          <input type="text" id="cfg_prompt" value="请用中文转录这段音频。" placeholder="请用中文转录这段音频。">
+        </div>
+        <div class="config-row">
+          <label>MODE</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="cfg_use_history" checked>
+            <span class="slider"></span>
+          </label>
+          <span style="color:var(--text-disabled);font-size:11px;font-family:'Space Mono',monospace;letter-spacing:0.04em;margin-left:8px" id="cfg_history_label">伪流式</span>
+          <span style="color:var(--text-disabled);font-size:11px;font-family:'Space Mono',monospace;letter-spacing:0.04em;margin-left:16px">ROLLBACK</span>
+          <span id="cfg_history_rollback_row" style="display:flex;align-items:center;gap:6px;margin-left:8px">
+            <select id="cfg_history_rollback_strategy">
+              <option value="none">none</option>
+              <option value="ratio">ratio</option>
+              <option value="chars">chars</option>
+              <option value="words" selected>words</option>
+              <option value="tokens">tokens</option>
             </select>
-            <div id="td_hint" style="width:100%;margin-top:4px;padding:6px 8px;font-size:11px;line-height:1.6;color:#6b7280;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb"></div>
-          </div>
+            <input type="number" id="cfg_history_rollback_value" value="1" min="0" step="0.1" style="width:50px;flex:none" placeholder="1">
+          </span>
         </div>
-        <div class="control-panel" style="gap: 12px;">
-          <button id="toggle_mic_button" class="action-button">开始识别</button>
-          <button id="upload_audio_button" class="action-button upload-btn">上传音频</button>
-          <input type="file" id="audio_file_input" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.opus" style="display: none;" />
+        <div class="config-row">
+          <label>TURN DET.</label>
+          <div id="td_hint" style="flex:1;font-size:11px;line-height:1.5;color:var(--text-disabled);font-family:'Space Mono',monospace;letter-spacing:0.02em"></div>
         </div>
+      </div>
+
+      <!-- 识别结果展示区 -->
+      <div class="text-display-area" id="result_text_box">
+        <div id="active_area"></div>
+        <div id="history_label" class="history-label" style="display:none;">[HISTORY]</div>
+        <div id="history_area"></div>
+        <span class="typing-cursor" id="cursor_element" style="display: none;"></span>
       </div>
     </div>
 
     <!-- 右侧区域 -->
     <div class="right-panel">
-      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <span>WebSocket 事件日志</span>
-        <span id="log_counter" style="font-size: 12px; color: #9ca3af; font-weight: normal;">高频事件折叠中</span>
+      <div class="section-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>EVENT LOG</span>
+        <span id="log_counter" class="log-counter">COLLAPSED</span>
       </div>
-      <div class="log-display-area" id="log_display_area">
-        <!-- 日志将在这里显示 -->
-      </div>
+      <div class="log-display-area" id="log_display_area"></div>
     </div>
 
   </div>
 
   <script>
     // =========================================
-    // 变量名极度白话化，可见即可得
+    // 模式切换
     // =========================================
-    const WS_PORT = 8001;
-    const server_websocket_url = `ws://${location.hostname || 'localhost'}:${WS_PORT}/v1/realtime`;
-    const server_health_url = `http://${location.hostname || 'localhost'}:${WS_PORT}/health`;
+    const themeToggleButton = document.getElementById('theme_toggle_button');
+    let isLightMode = false;
+    themeToggleButton.addEventListener('click', () => {
+      isLightMode = !isLightMode;
+      if (isLightMode) {
+        document.documentElement.setAttribute('data-theme', 'light');
+        themeToggleButton.innerText = 'DARK MODE';
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+        themeToggleButton.innerText = 'LIGHT MODE';
+      }
+    });
+
+    // =========================================
+    // 服务地址与健康检查
+    // =========================================
+
+    const AUTO_SERVER_PRESET = {
+      host: location.hostname || 'localhost',
+      port: location.port || 8001,
+      protocol: location.protocol === 'https:' ? 'wss' : 'ws',
+      name: 'AUTO',
+      label: 'AUTO (CURRENT HOST)',
+    };
+
+    const SERVER_PRESETS = { auto: AUTO_SERVER_PRESET };
+
+    function server_preset_label(key, config) {
+      if (config.label) return config.label;
+      const name = config.name || key.toUpperCase();
+      return `${name} (${config.protocol}://${config.host}:${config.port})`;
+    }
+
+    function parse_custom_server(raw_value) {
+      const value = raw_value.trim();
+      if (!value) {
+        return { host: 'localhost', port: 8001, protocol: 'ws', name: 'Custom' };
+      }
+      const url_text = /^(wss?:\/\/)/.test(value) ? value : `ws://${value}`;
+      try {
+        const url = new URL(url_text);
+        return {
+          host: url.hostname || 'localhost',
+          port: parseInt(url.port || '8001'),
+          protocol: url.protocol === 'wss:' ? 'wss' : 'ws',
+          name: 'Custom',
+        };
+      } catch (_) {
+        return { host: value, port: 8001, protocol: 'ws', name: 'Custom' };
+      }
+    }
+
+    // 页面默认始终使用当前 host，CUSTOM 只在用户本次手动选择后启用。
+    let selected_server_key = 'auto';
+    let custom_server_host = localStorage.getItem('asr_custom_server') || '';
+    localStorage.setItem('asr_selected_server', selected_server_key);
+
+    // 获取当前服务器配置
+    function get_current_server_config() {
+      const key = selected_server_key;
+      if (key === 'custom' && custom_server_host) {
+        return parse_custom_server(custom_server_host);
+      }
+      return SERVER_PRESETS[key] || SERVER_PRESETS['auto'];
+    }
+
+    // 构建服务器地址
+    function build_server_urls() {
+      const config = get_current_server_config();
+      const ws_url = `${config.protocol}://${config.host}:${config.port}/v1/realtime`;
+      const http_protocol = config.protocol === 'wss' ? 'https:' : 'http:';
+      const health_url = `${http_protocol}//${config.host}:${config.port}/health`;
+      return { ws_url, health_url, config };
+    }
+
+    let { ws_url: server_websocket_url, health_url: server_health_url, config: current_server_config } = build_server_urls();
+
+    function log_current_server(prefix) {
+      add_log('SYS', `${prefix}: ws=${server_websocket_url}, health=${server_health_url}`);
+    }
+
+    const ws_protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const server_port = location.port || 8001;
 
     /**
      * 轮询 GET /health 直到模型就绪，期间每 2 秒刷新一次 UI 进度。
@@ -521,19 +823,20 @@
           if (resp.ok) {
             const data = await resp.json();
             if (data.ready) return;
-            update_ui_status('', '模型加载中...');
+            update_ui_status('', '[LOADING]');
             show_loading_in_result_area(data.stage);
             add_log('SYS', `模型加载中: ${data.stage}`);
           }
         } catch (_) {
-          // 服务尚未启动，静默等待
           add_log('SYS', '等待服务启动...');
         }
         await new Promise(r => setTimeout(r, HEALTH_POLL_INTERVAL_MS));
       }
     }
 
+    // =========================================
     // 界面元素
+    // =========================================
     const ui_button = document.getElementById('toggle_mic_button');
     const ui_upload_button = document.getElementById('upload_audio_button');
     const ui_file_input = document.getElementById('audio_file_input');
@@ -542,22 +845,29 @@
     const ui_text_box = document.getElementById('result_text_box');
     const ui_cursor = document.getElementById('cursor_element');
     const ui_log_area = document.getElementById('log_display_area');
+    const ui_active_area = document.getElementById('active_area');
+    const ui_history_area = document.getElementById('history_area');
+    const ui_history_label = document.getElementById('history_label');
 
     // 配置面板元素
     const ui_config_toggle = document.getElementById('config_toggle');
     const ui_config_panel = document.getElementById('config_panel');
+    const cfg_server_preset = document.getElementById('cfg_server_preset');
+    const cfg_custom_host = document.getElementById('cfg_custom_host');
+    const cfg_auto_server_button = document.getElementById('cfg_auto_server_button');
+    const server_status_dot = document.getElementById('server_status_dot');
     const cfg_chunk_ms = document.getElementById('cfg_chunk_ms');
     const cfg_prompt = document.getElementById('cfg_prompt');
     const cfg_use_history = document.getElementById('cfg_use_history');
     const cfg_history_label = document.getElementById('cfg_history_label');
-    const cfg_rollback_strategy = document.getElementById('cfg_rollback_strategy');
-    const cfg_rollback_value = document.getElementById('cfg_rollback_value');
+    const cfg_history_rollback_strategy = document.getElementById('cfg_history_rollback_strategy');
+    const cfg_history_rollback_value = document.getElementById('cfg_history_rollback_value');
     const cfg_turn_detection = document.getElementById('cfg_turn_detection');
     const td_hint = document.getElementById('td_hint');
 
     const TD_HINTS = {
-      'none': '手动提交：点击「开始识别」收音，点击「结束识别」提交。中间按 chunk_ms 触发增量推理，不做自动断句。',
-      'server_vad': '自动端点：点击「开始识别」后，服务端 Silero VAD 实时检测语音起止。说话时自动推理，停顿后自动提交并开始新一轮，静音段不会送入模型。'
+      'none': '手动提交：点击 START 收音，点击 STOP 提交。中间按 chunk_ms 触发增量推理。',
+      'server_vad': '自动端点：服务端 Silero VAD 实时检测语音起止。停顿后自动提交并开始新一轮。'
     };
     function sync_td_hint() {
       td_hint.textContent = TD_HINTS[cfg_turn_detection.value] || '';
@@ -565,38 +875,187 @@
     cfg_turn_detection.addEventListener('change', sync_td_hint);
     sync_td_hint();
 
+    // =========================================
+    // 服务器切换逻辑
+    // =========================================
+
+    function render_server_preset_options() {
+      cfg_server_preset.innerHTML = '';
+      const auto_option = document.createElement('option');
+      auto_option.value = 'auto';
+      auto_option.textContent = server_preset_label('auto', SERVER_PRESETS.auto);
+      cfg_server_preset.appendChild(auto_option);
+
+      const custom_option = document.createElement('option');
+      custom_option.value = 'custom';
+      custom_option.textContent = 'CUSTOM';
+      cfg_server_preset.appendChild(custom_option);
+    }
+
+    function sync_custom_server_input() {
+      const is_custom = selected_server_key === 'custom';
+      cfg_server_preset.style.display = is_custom ? 'none' : '';
+      cfg_custom_host.style.display = is_custom ? '' : 'none';
+      cfg_auto_server_button.style.display = is_custom ? '' : 'none';
+      if (is_custom) {
+        cfg_custom_host.value = custom_server_host;
+        cfg_custom_host.focus();
+      }
+    }
+
+    function switch_to_auto_server() {
+      selected_server_key = 'auto';
+      cfg_server_preset.value = selected_server_key;
+      localStorage.setItem('asr_selected_server', selected_server_key);
+      sync_custom_server_input();
+
+      const urls = build_server_urls();
+      server_websocket_url = urls.ws_url;
+      server_health_url = urls.health_url;
+      current_server_config = urls.config;
+      log_current_server('切换服务器');
+      check_server_health();
+    }
+
+    // 初始化服务器选择器
+    render_server_preset_options();
+    cfg_server_preset.value = selected_server_key;
+    if (!cfg_server_preset.value) {
+      selected_server_key = 'auto';
+      cfg_server_preset.value = selected_server_key;
+      localStorage.setItem('asr_selected_server', selected_server_key);
+    }
+    sync_custom_server_input();
+
+    // 服务器切换事件
+    cfg_server_preset.addEventListener('change', () => {
+      selected_server_key = cfg_server_preset.value;
+      localStorage.setItem('asr_selected_server', selected_server_key);
+      sync_custom_server_input();
+
+      if (selected_server_key === 'custom') {
+        add_log('SYS', '请输入 CUSTOM 服务器地址');
+        return;
+      }
+
+      // 更新服务器地址
+      const urls = build_server_urls();
+      server_websocket_url = urls.ws_url;
+      server_health_url = urls.health_url;
+      current_server_config = urls.config;
+
+      log_current_server('切换服务器');
+      check_server_health();
+    });
+
+    // 自定义服务器地址输入
+    cfg_custom_host.addEventListener('change', () => {
+      custom_server_host = cfg_custom_host.value.trim();
+      localStorage.setItem('asr_custom_server', custom_server_host);
+
+      if (selected_server_key === 'custom') {
+        const urls = build_server_urls();
+        server_websocket_url = urls.ws_url;
+        server_health_url = urls.health_url;
+        current_server_config = urls.config;
+
+        log_current_server('更新自定义服务器');
+        check_server_health();
+      }
+    });
+    cfg_custom_host.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        cfg_custom_host.blur();
+      } else if (event.key === 'Escape') {
+        switch_to_auto_server();
+      }
+    });
+    cfg_auto_server_button.addEventListener('click', switch_to_auto_server);
+
+    // 检查服务器健康状态
+    async function check_server_health() {
+      if (is_microphone_working) {
+        add_log('SYS', '录音中，跳过健康检查');
+        return;
+      }
+
+      server_status_dot.className = 'server-status-dot checking';
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        const resp = await fetch(server_health_url, {
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.ready) {
+            server_status_dot.className = 'server-status-dot online';
+            add_log('SYS', `服务器在线: ${current_server_config.name || current_server_config.host}`);
+          } else {
+            server_status_dot.className = 'server-status-dot checking';
+            add_log('SYS', `服务器加载中: ${data.stage || '...'}`);
+          }
+        } else {
+          server_status_dot.className = 'server-status-dot offline';
+          add_log('SYS', `服务器响应异常: ${resp.status} (${server_health_url})`);
+        }
+      } catch (err) {
+        server_status_dot.className = 'server-status-dot offline';
+        if (err.name === 'AbortError') {
+          add_log('SYS', `服务器健康检查超时: ${server_health_url}`);
+        } else {
+          add_log('SYS', `服务器不可达: ${server_health_url} (${err.message})`);
+        }
+      }
+    }
+
+    // 页面加载时检查服务器状态
+    check_server_health();
+    // 每 30 秒自动检查一次（仅在未录音时）
+    setInterval(() => {
+      if (!is_microphone_working) {
+        check_server_health();
+      }
+    }, 30000);
+
     ui_config_toggle.addEventListener('click', () => {
       ui_config_panel.classList.toggle('open');
-      ui_config_toggle.innerHTML = ui_config_panel.classList.contains('open')
-        ? '&#9881; 推理配置 &#9652;' : '&#9881; 推理配置 &#9662;';
+      const isOpen = ui_config_panel.classList.contains('open');
+      ui_config_toggle.textContent = isOpen ? '-' : '+';
+      ui_config_toggle.classList.toggle('active', isOpen);
     });
-    const cfg_rollback_row = document.getElementById('cfg_rollback_row');
-    function sync_rollback_state() {
+    const cfg_history_rollback_row = document.getElementById('cfg_history_rollback_row');
+    function sync_history_rollback_state() {
       const enabled = cfg_use_history.checked;
-      cfg_rollback_row.style.opacity = enabled ? '1' : '0.35';
-      cfg_rollback_strategy.disabled = !enabled;
-      cfg_rollback_value.disabled = !enabled;
+      cfg_history_rollback_row.style.opacity = enabled ? '1' : '0.35';
+      cfg_history_rollback_strategy.disabled = !enabled;
+      cfg_history_rollback_value.disabled = !enabled;
     }
     cfg_use_history.addEventListener('change', () => {
-      cfg_history_label.textContent = cfg_use_history.checked ? '开启' : '关闭';
-      sync_rollback_state();
+      cfg_history_label.textContent = cfg_use_history.checked ? '伪流式' : '非流式';
+      sync_history_rollback_state();
     });
-    sync_rollback_state();
+    sync_history_rollback_state();
 
-    // 识别进行中锁定/解锁推理配置（防止中途改参数发送了旧 session.update）
+    // 识别进行中锁定/解锁推理配置
     function set_config_locked(locked) {
       const els = [cfg_chunk_ms, cfg_prompt, cfg_use_history,
-                   cfg_rollback_strategy, cfg_rollback_value, cfg_turn_detection];
+                   cfg_history_rollback_strategy, cfg_history_rollback_value, cfg_turn_detection,
+                   cfg_server_preset, cfg_custom_host];
       els.forEach(el => { el.disabled = locked; });
       ui_config_toggle.style.pointerEvents = locked ? 'none' : '';
-      ui_config_toggle.style.opacity      = locked ? '0.45' : '';
+      ui_config_toggle.style.opacity      = locked ? '0.4' : '';
     }
 
     function build_session_update_payload() {
       const session_cfg = {};
       const extra = {};
 
-      // --- OpenAI 标准字段 ---
       const prompt_val = cfg_prompt.value.trim();
       if (prompt_val) {
         session_cfg.instructions = prompt_val;
@@ -606,7 +1065,6 @@
         session_cfg.audio = { input: { turn_detection: { type: td_val } } };
       }
 
-      // --- extra 自定义扩展字段 ---
       const chunk_val = parseInt(cfg_chunk_ms.value);
       if (!isNaN(chunk_val) && chunk_val > 0) {
         extra.chunk_ms = chunk_val;
@@ -614,10 +1072,10 @@
       if (!cfg_use_history.checked) {
         extra.use_history = false;
       }
-      const rb_strategy = cfg_rollback_strategy.value;
-      const rb_value = parseFloat(cfg_rollback_value.value);
+      const rb_strategy = cfg_history_rollback_strategy.value;
+      const rb_value = parseFloat(cfg_history_rollback_value.value);
       if (rb_strategy !== 'none' && rb_value > 0) {
-        extra.rollback = { enabled: true, strategy: rb_strategy, value: rb_value };
+        extra.history_rollback = { enabled: true, strategy: rb_strategy, value: rb_value };
       }
       if (Object.keys(extra).length > 0) {
         session_cfg.extra = extra;
@@ -625,9 +1083,11 @@
       return Object.keys(session_cfg).length > 0 ? session_cfg : null;
     }
 
+    // =========================================
     // 运行状态与底层实例
+    // =========================================
     let is_microphone_working = false;
-    let server_connection = null;     // 对应 WebSocket
+    let server_connection = null;     // WebSocket 连接
 
     // 音频处理相关变量
     let hardware_microphone_stream = null;
@@ -635,18 +1095,22 @@
     let audio_capture_node = null;
     let audio_sender_node = null;
     let audio_gain_node = null;
+    let audio_analyser_node = null;
+    let waveform_req_id = null;
+    const waveform_bars = document.querySelectorAll('#audio_waveform .waveform-bar');
 
     // 当前轮文本追踪（配合 server 的 cursor 协议实现精确回退）
     let current_turn_text = "";
-    let current_turn_node = null;    // 当前轮 <span> 里的文本节点
-    let current_turn_div = null;     // 当前轮 <div class="turn-line">
-    let current_session_block = null; // 当前会话块 <div class="session-block">
+    let current_turn_node = null;
+    let current_turn_div = null;
+    let turn_base_len = 0;   // 上一段完成后的累积长度，用于多段追加
+    let last_chunk_id = -1;  // 上一个 chunk_id，用于检测跨 chunk 历史回退（仅伪流式模式生效）
+    let current_session_block = null;
 
     // 日志频率控制
     let append_audio_count = 0;
 
     // 预录制缓冲：getUserMedia 成功后立即开始录音，服务器就绪前缓存到此处
-    // 服务器就绪（activate_audio_capture）时补发，避免用户开口时录音还没启动导致前导静音
     let pre_capture_chunks = [];
     const MAX_PRE_CAPTURE_CHUNKS = 20;  // 20 × 256ms ≈ 5 秒
 
@@ -659,6 +1123,10 @@
     // 文件上传模式状态
     let is_file_uploading = false;
 
+    // Session 编号计数器
+    let session_counter = 0;
+    let current_session_id = '';
+
     // ----- 日志打印工具 -----
     function add_log(type, action, details = "") {
       const now = new Date();
@@ -670,18 +1138,15 @@
       let typeClass = type === 'SEND' ? 'log-type-send' : 'log-type-recv';
 
       let displayDetails = details;
-      // 截断过长的 base64 或文本
       if (details.length > 50) {
         displayDetails = details.substring(0, 50) + '...';
       }
 
-      logDiv.innerHTML = `<span class="log-time">[${timeStr}]</span><span class="${typeClass}">${type}</span> ${action} <span style="color:#9ca3af">${displayDetails}</span>`;
+      logDiv.innerHTML = `<span class="log-time">${timeStr}</span><span class="${typeClass}">${type}</span> ${action} <span style="color:var(--text-disabled)">${displayDetails}</span>`;
 
       ui_log_area.appendChild(logDiv);
-      // 保持滚动到底部
       ui_log_area.scrollTop = ui_log_area.scrollHeight;
 
-      // 防止日志无限堆积，保留最近的 500 条
       if (ui_log_area.children.length > 500) {
         ui_log_area.removeChild(ui_log_area.firstChild);
       }
@@ -698,28 +1163,24 @@
       const existing = document.getElementById('error_banner');
       if (existing) existing.remove();
 
-      if (ui_cursor.parentNode !== ui_text_box) {
-        ui_text_box.appendChild(ui_cursor);
-      }
-
       const banner = document.createElement('div');
       banner.id = 'error_banner';
       banner.className = 'error-banner';
       banner.innerHTML = `
         <div class="error-banner-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5">
             <circle cx="12" cy="12" r="10"/>
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
         </div>
-        <div class="error-banner-text">
-          <div class="error-banner-title">${title}</div>
+        <div>
+          <div class="error-banner-title">[ERROR] ${title}</div>
           <div class="error-banner-detail">${detail}</div>
         </div>
       `;
-      ui_text_box.insertBefore(banner, ui_cursor);
-      ui_text_box.scrollTop = ui_text_box.scrollHeight;
+      ui_active_area.innerHTML = '';
+      ui_active_area.appendChild(banner);
     }
 
     // ----- 按钮点击事件 -----
@@ -733,20 +1194,20 @@
 
     // ----- 核心动作：开启麦克风 & 连接服务器 -----
     async function start_microphone_and_connect_server() {
-      // 入口即锁定按钮，防止 poll 期间（可达数分钟）用户重复点击产生多实例
       ui_button.disabled = true;
       ui_button.style.opacity = '0.5';
       ui_button.style.cursor = 'not-allowed';
-      ui_button.innerText = '连接中...';
+      ui_button.innerText = 'CONNECTING...';
       set_config_locked(true);
       try {
-        // 清理上一轮残留的 WebSocket 连接，防止旧连接的 onclose 回调干扰新连接
         if (server_connection) {
           server_connection.onclose = null;
           server_connection.onerror = null;
           server_connection.onmessage = null;
           if (server_connection.readyState === WebSocket.OPEN || server_connection.readyState === WebSocket.CONNECTING) {
-            server_connection.close();
+            try {
+              server_connection.close(1000, 'Starting new session');
+            } catch (e) {}
           }
           server_connection = null;
         }
@@ -757,23 +1218,18 @@
         });
         add_log('SYS', '麦克风权限获取成功');
 
-        // 在用户点击上下文中预创建 AudioContext，避免被浏览器 autoplay policy 阻止
         if (!audio_processor_engine || audio_processor_engine.state === 'closed') {
           audio_processor_engine = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TARGET_SAMPLE_RATE });
         }
         if (audio_processor_engine.state === 'suspended') {
           await audio_processor_engine.resume();
         }
-        add_log('SYS', `AudioContext 预创建成功 (state=${audio_processor_engine.state})`);
+        add_log('SYS', `AudioContext ready (state=${audio_processor_engine.state})`);
 
-        // 立即开始预录制：用户点击按钮时就可能已经在说话，不能等服务器就绪
-        // onaudioprocess 在 is_audio_capturing=false 时缓存到 pre_capture_chunks（滑动窗口）
-        // activate_audio_capture 触发后会自动补发这些历史帧
         pre_capture_chunks = [];
         begin_capture_and_send_audio();
-        add_log('SYS', '预录制已启动（等待服务器就绪后补发）');
+        add_log('SYS', '预录制已启动');
 
-        // 轮询 /health，模型就绪后再连 WebSocket
         add_log('SYS', '检查模型就绪状态...');
         await poll_health_until_ready();
         add_log('SYS', '模型已就绪');
@@ -790,45 +1246,65 @@
           const old_error = document.getElementById('error_banner');
           if (old_error) old_error.remove();
 
-          update_ui_status('active', '已连接，初始化中');
-          // 按钮已在函数入口禁用，此处保持禁用状态
-          ui_button.innerText = '连接中...';
+          update_ui_status('active', 'CONNECTED');
+          ui_button.innerText = 'CONNECTING...';
           is_microphone_working = true;
-          add_log('SYS', 'WebSocket 连接成功');
+          add_log('SYS', `WebSocket 连接成功: ${current_server_config.name || current_server_config.host}:${current_server_config.port}`);
           append_audio_count = 0;
+
+          // 打印所有前端配置
+          add_log('CFG', `服务器 ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})`);
+          add_log('CFG', `分块间隔 ${cfg_chunk_ms.value} 毫秒`);
+          add_log('CFG', cfg_prompt.value ? `提示词「${cfg_prompt.value}」` : '未设置提示词');
+          add_log('CFG', cfg_use_history.checked ? '伪流式（使用历史上下文，支持回退）' : '非流式（不使用历史上下文）');
+          const rb = cfg_history_rollback_strategy.value;
+          const rv = cfg_history_rollback_value.value;
+          if (rb === 'none') {
+            add_log('CFG', '未启用回退');
+          } else if (rb === 'ratio') {
+            add_log('CFG', `按比例回退，回退比例为 ${rv}`);
+          } else if (rb === 'chars') {
+            add_log('CFG', `按字符数回退，回退数量为 ${rv} 字符`);
+          } else if (rb === 'words') {
+            add_log('CFG', `按词数回退，回退数量为 ${rv} 词（英文按空格，中文按结巴）`);
+          } else if (rb === 'tokens') {
+            add_log('CFG', `按 token 数回退，回退数量为 ${rv} token`);
+          } else {
+            add_log('CFG', `回退策略 ${rb}，参数 ${rv}`);
+          }
+          add_log('CFG', cfg_turn_detection.value === 'server_vad' ? '说话检测使用 VAD' : '说话检测不使用 VAD');
         };
 
-        // 用闭包绑定 connId，过期连接的消息不污染新 session 的 UI
         server_connection.onmessage = (event) => {
           if (my_conn_id !== current_conn_id) return;
           on_receive_message_from_server(event);
         };
 
         server_connection.onerror = (err) => {
-          add_log('SYS', 'WebSocket 连接出错');
+          add_log('SYS', `WebSocket 连接出错: ${current_server_config.host}:${current_server_config.port}`);
           if (!has_ever_connected) {
-            update_ui_status('error', '无法连接到识别服务');
+            update_ui_status('error', 'CONNECTION FAILED');
             show_error_in_result_area(
               '无法连接到识别服务',
-              `请检查后端服务是否已启动，地址: ${server_websocket_url}`
+              `服务器: ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})\n地址: ${server_websocket_url}\n请检查服务是否已启动，或切换到其他服务器。`
             );
           } else {
-            update_ui_status('error', '连接异常中断');
+            update_ui_status('error', 'CONNECTION LOST');
             show_error_in_result_area('连接异常中断', '与识别服务的连接意外断开，请重试');
           }
           stop_microphone_and_finish_turn();
         };
 
         server_connection.onclose = (event) => {
-          add_log('SYS', `WebSocket 连接关闭 (code=${event.code})`);
+          add_log('SYS', `WebSocket closed (code=${event.code})`);
           if (!has_ever_connected) {
-            update_ui_status('error', '服务不可用');
+            update_ui_status('error', 'UNAVAILABLE');
             show_error_in_result_area(
               '识别服务不可用',
-              `WebSocket 连接被拒绝 (${server_websocket_url})，请确认服务已启动`
+              `服务器: ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})\nWebSocket 连接被拒绝，请确认服务已启动或切换到其他服务器。`
             );
           } else {
-            update_ui_status('', '服务器已断开');
+            update_ui_status('', 'DISCONNECTED');
           }
           if (is_microphone_working) stop_microphone_and_finish_turn();
           has_ever_connected = false;
@@ -836,100 +1312,138 @@
 
       } catch (error) {
         add_log('ERR', '启动失败', error.message);
-        // 释放已申请的麦克风和音频资源
         if (audio_sender_node) { audio_sender_node.disconnect(); audio_sender_node.onaudioprocess = null; audio_sender_node = null; }
         if (audio_gain_node) { audio_gain_node.disconnect(); audio_gain_node = null; }
         if (audio_capture_node) { audio_capture_node.disconnect(); audio_capture_node = null; }
         if (hardware_microphone_stream) { hardware_microphone_stream.getTracks().forEach(t => t.stop()); hardware_microphone_stream = null; }
         pre_capture_chunks = [];
-        // 根据错误类型展示不同提示
         const is_mic_error = error.name === 'NotAllowedError' || error.name === 'NotFoundError' || error.message.includes('麦克风');
         const msg = is_mic_error
-          ? '无法获取麦克风，请检查浏览器权限！\n' + error.message
+          ? '无法获取麦克风，请检查浏览器权限\n' + error.message
           : '连接失败：' + error.message;
         show_error_in_result_area('启动失败', msg);
-        update_ui_status('error', '启动失败');
-        // 恢复按钮状态，允许用户重试
+        update_ui_status('error', 'ERROR');
         ui_button.disabled = false;
         ui_button.style.opacity = '';
         ui_button.style.cursor = '';
-        ui_button.innerText = '开始识别';
+        ui_button.innerText = 'START';
         set_config_locked(false);
       }
     }
 
     // ----- 核心动作：停止收音 & 提交结算 -----
     function stop_microphone_and_finish_turn() {
-      // 无论 Server VAD 还是手动模式，点"结束识别"都发 commit 处理最后的尾巴
+      stop_waveform_animation();
+
       if (server_connection && server_connection.readyState === WebSocket.OPEN) {
         add_log('SEND', 'input_audio_buffer.commit');
         server_connection.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
       }
 
-      // 立刻解绑旧连接的生命周期回调，防止其 onclose/onerror 干扰下一轮
-      // onmessage 保留至多 3s——让 commit 的 completed 回来后仍能更新 DOM
-      // 但 onmessage 内部已通过 connId 守卫，一旦新连接建立就自动忽略旧消息
       const conn_to_close = server_connection;
       const closing_conn_id = current_conn_id;
+      let connection_closed = false;
+
       if (conn_to_close) {
         conn_to_close.onopen = null;
-        conn_to_close.onclose = null;
         conn_to_close.onerror = null;
-        // 若 3s 内已建立新连接（connId 变化），立刻关闭旧连接；否则等 3s 等待 completed
-        setTimeout(() => {
-          conn_to_close.onmessage = null;
-          if (conn_to_close.readyState === WebSocket.OPEN || conn_to_close.readyState === WebSocket.CONNECTING) {
-            conn_to_close.close();
+
+        const original_onclose = conn_to_close.onclose;
+        conn_to_close.onclose = (event) => {
+          if (!connection_closed) {
+            connection_closed = true;
+            add_log('SYS', `连接已关闭 (code=${event.code})`);
           }
-        }, 3000);
-        // 同时监听新连接建立，一旦 connId 变化立即关闭
+        };
+
+        const original_onmessage = conn_to_close.onmessage;
+        let received_final_response = false;
+
+        conn_to_close.onmessage = (event) => {
+          if (current_conn_id !== closing_conn_id) return;
+
+          if (original_onmessage) {
+            original_onmessage(event);
+          }
+
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'response.done' ||
+                data.type === 'conversation.item.input_audio_transcription.completed') {
+              received_final_response = true;
+              setTimeout(() => {
+                if (!connection_closed && conn_to_close.readyState === WebSocket.OPEN) {
+                  connection_closed = true;
+                  conn_to_close.onmessage = null;
+                  try {
+                    conn_to_close.close(1000, 'Normal closure');
+                    add_log('SYS', '收到最终响应，关闭连接');
+                  } catch (e) {}
+                }
+              }, 100);
+            }
+          } catch (e) {}
+        };
+
+        setTimeout(() => {
+          if (!connection_closed && conn_to_close.readyState === WebSocket.OPEN) {
+            connection_closed = true;
+            conn_to_close.onmessage = null;
+            try {
+              conn_to_close.close(1000, 'Timeout closure');
+              add_log('SYS', '超时未收到响应，关闭连接');
+            } catch (e) {}
+          }
+        }, 1500);
+
         const check_interval = setInterval(() => {
           if (current_conn_id !== closing_conn_id) {
             clearInterval(check_interval);
-            conn_to_close.onmessage = null;
-            if (conn_to_close.readyState === WebSocket.OPEN || conn_to_close.readyState === WebSocket.CONNECTING) {
-              conn_to_close.close();
+            if (!connection_closed && (conn_to_close.readyState === WebSocket.OPEN || conn_to_close.readyState === WebSocket.CONNECTING)) {
+              connection_closed = true;
+              conn_to_close.onmessage = null;
+              try {
+                conn_to_close.close(1000, 'New session started');
+              } catch (e) {}
             }
           }
         }, 100);
-        setTimeout(() => clearInterval(check_interval), 3100);
+        setTimeout(() => clearInterval(check_interval), 1600);
       }
       server_connection = null;
 
-      // 释放本地电脑硬件资源（AudioContext 不 close，下一轮复用，避免浏览器 autoplay policy 阻塞）
-      pre_capture_chunks = [];  // 清空预录制缓冲
+      pre_capture_chunks = [];
       if (audio_sender_node) { audio_sender_node.disconnect(); audio_sender_node.onaudioprocess = null; audio_sender_node = null; }
       if (audio_gain_node) { audio_gain_node.disconnect(); audio_gain_node = null; }
       if (audio_capture_node) { audio_capture_node.disconnect(); audio_capture_node = null; }
       if (hardware_microphone_stream) { hardware_microphone_stream.getTracks().forEach(track => track.stop()); hardware_microphone_stream = null; }
 
-      // 恢复 UI
       is_microphone_working = false;
       is_audio_capturing = false;
       is_engine_ready = false;
-      ui_button.innerText = '开始识别';
+      ui_button.innerText = 'START';
       ui_button.disabled = false;
       ui_button.style.opacity = '';
       ui_button.style.cursor = '';
       ui_button.classList.remove('is-working');
-      update_ui_status('active', '等待下一次输入');
+      update_ui_status('active', 'READY');
       ui_cursor.style.display = 'none';
-      if (ui_cursor.parentNode !== ui_text_box) {
-        ui_text_box.appendChild(ui_cursor);
-      }
       if (current_session_block) {
         current_session_block.classList.remove('active');
+        // 将完成的 session 移到历史区顶部（最新的在最上面）
+        ui_history_area.insertBefore(current_session_block, ui_history_area.firstChild);
+        ui_history_label.style.display = '';
       }
-      // current_turn_node/div 不在此清零，由 commit 的 completed 事件负责清零
+      ui_active_area.innerHTML = '';
       set_config_locked(false);
-      sync_rollback_state();  // 解锁后重新同步回退策略的启用状态
+      sync_history_rollback_state();
       add_log('SYS', '已停止收音');
     }
 
     // ----- 当确认模型就绪后，正式开始采集音频 -----
     function activate_audio_capture() {
       if (is_audio_capturing) {
-        add_log('SYS', '⚠️ activate_audio_capture 已在采集中, 跳过');
+        add_log('SYS', 'activate_audio_capture 已在采集中, 跳过');
         return;
       }
       add_log('SYS', 'activate_audio_capture 启动');
@@ -939,36 +1453,41 @@
       const old_loading = document.getElementById('loading_banner');
       if (old_loading) old_loading.remove();
 
-      update_ui_status('active', '已连接，正在收音');
-      ui_button.innerText = '结束识别';
+      update_ui_status('active', 'RECORDING');
+      ui_button.innerText = 'STOP';
       ui_button.disabled = false;
       ui_button.style.opacity = '';
       ui_button.style.cursor = '';
       ui_button.classList.add('is-working');
 
+      session_counter++;
       const now = new Date();
       const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
       current_session_block = document.createElement('div');
       current_session_block.className = 'session-block active';
       const header = document.createElement('div');
       header.className = 'session-block-header';
-      header.textContent = ts;
+      header.textContent = `${ts}  ${current_session_id || '#' + session_counter}`;
       current_session_block.appendChild(header);
-      // 确保 ui_cursor 是 ui_text_box 的直接子节点，否则 insertBefore 会抛 NotFoundError
-      if (ui_cursor.parentNode !== ui_text_box) {
-        ui_text_box.appendChild(ui_cursor);
-      }
-      ui_text_box.insertBefore(current_session_block, ui_cursor);
 
+      // 放入 active_area（顶部区域）
+      ui_active_area.innerHTML = '';
+      ui_active_area.appendChild(current_session_block);
+      ui_active_area.appendChild(ui_cursor);
+
+      // 创建本次 session 的唯一一个 turn-line，整个 session 只有一段
       current_turn_text = "";
-      current_turn_node = null;
-      current_turn_div = null;
+      turn_base_len = 0;
+      last_chunk_id = -1;
+      current_turn_div = document.createElement('div');
+      current_turn_div.className = 'turn-line';
+      current_turn_node = document.createTextNode("");
+      current_turn_div.appendChild(current_turn_node);
+      current_session_block.appendChild(current_turn_div);
       ui_cursor.style.display = 'inline-block';
-      // begin_capture_and_send_audio 已在 getUserMedia 成功后立即调用（预录制模式）
-      // 这里只需设置 is_audio_capturing=true，onaudioprocess 会自动切换为发送模式并补发历史帧
-      // 降级保护：若预录制阶段 ScriptProcessor 未成功创建（如 AudioContext 异常），在此重试
+      current_turn_div.appendChild(ui_cursor);
       if (!audio_sender_node) {
-        add_log('SYS', '⚠️ ScriptProcessor 未创建，降级重试 begin_capture_and_send_audio');
+        add_log('SYS', 'ScriptProcessor 未创建，降级重试');
         begin_capture_and_send_audio();
       }
     }
@@ -980,13 +1499,23 @@
       if (server_data.type === 'session.created') {
         const sess = server_data.session || {};
         const sid = sess.id || '';
+        current_session_id = sid;
         const extra = sess.extra || {};
         const td = sess.audio?.input?.turn_detection || {};
 
-        const summary = `td=${td.type || '?'} chunk=${extra.chunk_ms || '?'} history=${extra.use_history ?? '?'} rollback=${extra.rollback?.strategy || 'none'}/${extra.rollback?.value || 0}`;
+        const summary = `td=${td.type || '?'} chunk=${extra.chunk_ms || '?'} history=${extra.use_history ?? '?'} history_rollback=${extra.history_rollback?.strategy || 'none'}/${extra.history_rollback?.value || 0}`;
         add_log('RECV', 'session.created', `${sid} ${summary}`);
 
-        // 回填服务端默认值到配置面板（空值才回填，不覆盖用户已手动填写的值）
+        // 更新 session block header，用服务器分配的 session ID
+        if (current_session_block) {
+          const header = current_session_block.querySelector('.session-block-header');
+          if (header) {
+            const now = new Date();
+            const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+            header.textContent = `${ts}  ${sid}`;
+          }
+        }
+
         if (sess.instructions && !cfg_prompt.value.trim()) {
           cfg_prompt.value = sess.instructions;
         }
@@ -1024,15 +1553,14 @@
       if (server_data.type === 'input_audio_buffer.speech_started') {
         const ms = server_data.audio_start_ms || 0;
         add_log('RECV', 'speech_started', `${ms}ms`);
-        update_ui_status('active', `检测到语音开始 (${ms}ms)`);
-        ensure_turn_line();
+        update_ui_status('active', `SPEECH DETECTED (${ms}ms)`);
         return;
       }
 
       if (server_data.type === 'input_audio_buffer.speech_stopped') {
         const ms = server_data.audio_end_ms || 0;
         add_log('RECV', 'speech_stopped', `${ms}ms`);
-        update_ui_status('active', `语音结束 (${ms}ms)，等待结果...`);
+        update_ui_status('active', `SPEECH ENDED (${ms}ms)`);
         return;
       }
 
@@ -1041,47 +1569,39 @@
         return;
       }
 
-
       if (server_data.type === 'conversation.item.input_audio_transcription.delta') {
-        ensure_turn_line();
-        const cursor = server_data.cursor !== undefined ? server_data.cursor : current_turn_text.length;
+        const cursor = server_data.cursor !== undefined ? server_data.cursor : 0;
         const delta = server_data.delta || "";
-        const cid = server_data.chunk_id !== undefined ? `#${server_data.chunk_id}` : '';
+        const cid = server_data.chunk_id !== undefined ? server_data.chunk_id : -1;
+        const cidLabel = cid >= 0 ? `#${cid}` : '';
 
-        if (cursor < current_turn_text.length) {
-          add_log('RECV', `delta${cid} (rollback)`, `cursor=${cursor}, -${current_turn_text.length - cursor}chars, +\"${delta}\"`);
+        // 检测跨 Chunk 历史回退（仅伪流式模式）：新 chunk 的 cursor 小于当前段已显示长度
+        const current_seg_len = current_turn_text.length - turn_base_len;
+        const is_history_rollback = (cid >= 0 && cid !== last_chunk_id && cursor < current_seg_len);
+        last_chunk_id = cid;
+
+        if (cursor === 0 && current_turn_text.length > 0) {
+          // cursor 归零说明新语音段开始，delta 拼在已累积文字后面
+          current_turn_text = current_turn_text.slice(0, turn_base_len) + delta;
         } else {
-          add_log('RECV', `delta${cid}`, delta);
+          // 同一段内的正常流式 delta（含 chunk 内 history_rollback）
+          current_turn_text = current_turn_text.slice(0, turn_base_len + cursor) + delta;
         }
 
-        current_turn_text = current_turn_text.slice(0, cursor) + delta;
+        if (is_history_rollback) {
+          add_log('RECV', `delta${cidLabel} (history_rollback)`, `cursor=${cursor} ctext="${current_turn_text}"`);
+        } else {
+          add_log('RECV', `delta${cidLabel}`, `cursor=${cursor} ctext="${current_turn_text}"`);
+        }
         current_turn_node.textContent = current_turn_text;
         ui_text_box.scrollTop = ui_text_box.scrollHeight;
       }
       else if (server_data.type === 'conversation.item.input_audio_transcription.completed') {
         add_log('RECV', 'transcription.completed', server_data.transcript || '');
-        if (server_data.transcript !== undefined && current_turn_node) {
-          current_turn_text = server_data.transcript;
-          current_turn_node.textContent = current_turn_text;
-        }
-        if (current_turn_div) {
-          const check = document.createElement('span');
-          check.className = 'turn-check';
-          check.textContent = ' \u2713';
-          current_turn_div.appendChild(check);
-          // cursor 从 turn-line 里移出，放回 session-block 末尾
-          if (current_turn_div.contains(ui_cursor)) {
-            current_turn_div.removeChild(ui_cursor);
-            const cursor_home = current_session_block || ui_text_box;
-            cursor_home.appendChild(ui_cursor);
-          }
-        }
-        ui_text_box.scrollTop = ui_text_box.scrollHeight;
-        current_turn_text = "";
-        current_turn_node = null;
-        current_turn_div = null;
+        // 记录当前段完成后的累积长度，下一段的 delta 会从这个位置之后追加
+        turn_base_len = current_turn_text.length;
         if (is_microphone_working) {
-          update_ui_status('active', '已连接，正在收音');
+          update_ui_status('active', 'RECORDING');
         }
       } else {
         add_log('RECV', server_data.type, "");
@@ -1090,60 +1610,51 @@
 
     // ----- 在识别结果区显示模型加载进度 -----
     function show_loading_in_result_area(stage) {
-      if (ui_cursor.parentNode !== ui_text_box) {
-        ui_text_box.appendChild(ui_cursor);
-      }
       let banner = document.getElementById('loading_banner');
       if (!banner) {
         banner = document.createElement('div');
         banner.id = 'loading_banner';
         banner.className = 'loading-banner';
-        ui_text_box.insertBefore(banner, ui_cursor);
+        ui_active_area.appendChild(banner);
       }
       banner.innerHTML = `
         <div class="loading-banner-spinner"></div>
-        <div class="loading-banner-text">
-          <div class="loading-banner-title">模型加载中，请稍候...</div>
+        <div>
+          <div class="loading-banner-title">[LOADING]</div>
           <div class="loading-banner-stage">${stage}</div>
         </div>
       `;
-      ui_text_box.scrollTop = ui_text_box.scrollHeight;
     }
 
     // ----- 底层：将麦克风声音切片并发送 -----
     const TARGET_SAMPLE_RATE = 16000;
 
     function begin_capture_and_send_audio() {
-      // 幂等保护：避免重复创建 ScriptProcessor
       if (audio_sender_node) {
-        add_log('SYS', '⚠️ begin_capture_and_send_audio: ScriptProcessor 已存在，跳过');
+        add_log('SYS', 'ScriptProcessor 已存在，跳过');
         return;
       }
       add_log('SYS', '初始化音频采集...');
 
       if (!hardware_microphone_stream || hardware_microphone_stream.getTracks().every(t => t.readyState === 'ended')) {
-        add_log('ERR', '麦克风流已失效，无法采集音频');
+        add_log('ERR', '麦克风流已失效');
         return;
       }
 
       if (!audio_processor_engine || audio_processor_engine.state === 'closed') {
-        add_log('ERR', 'AudioContext 不可用 (未创建或已关闭)');
+        add_log('ERR', 'AudioContext 不可用');
         return;
       }
       if (audio_processor_engine.state === 'suspended') {
         audio_processor_engine.resume().catch(e => add_log('ERR', 'AudioContext resume 失败: ' + e.message));
       }
-      add_log('SYS', `AudioContext state=${audio_processor_engine.state}`);
 
       const actual_sr = audio_processor_engine.sampleRate;
       const need_resample = actual_sr !== TARGET_SAMPLE_RATE;
       const resample_ratio = need_resample ? TARGET_SAMPLE_RATE / actual_sr : 1;
 
       if (need_resample) {
-        add_log('SYS', `采样率不匹配: 浏览器=${actual_sr}Hz, 目标=${TARGET_SAMPLE_RATE}Hz, 将自动重采样`);
-        console.warn(`[AudioCapture] Browser sampleRate=${actual_sr}, target=${TARGET_SAMPLE_RATE}, resample_ratio=${resample_ratio.toFixed(4)}`);
-      } else {
-        add_log('SYS', `音频采样率: ${actual_sr}Hz ✓`);
+        add_log('SYS', `重采样: ${actual_sr}Hz -> ${TARGET_SAMPLE_RATE}Hz`);
       }
 
       audio_capture_node = audio_processor_engine.createMediaStreamSource(hardware_microphone_stream);
@@ -1157,11 +1668,9 @@
         }
 
         const pcm16_audio = convert_float_to_pcm16(raw_float_audio);
-        const base64_audio_string = convert_bytes_to_base64(pcm16_audio.buffer);
 
         if (!is_audio_capturing) {
-          // 服务器就绪前：缓存到预录制缓冲区（滑动窗口，防止无限增长）
-          pre_capture_chunks.push(base64_audio_string);
+          pre_capture_chunks.push(pcm16_audio.buffer.slice(0));
           if (pre_capture_chunks.length > MAX_PRE_CAPTURE_CHUNKS) {
             pre_capture_chunks.shift();
           }
@@ -1170,44 +1679,80 @@
 
         if (!server_connection || server_connection.readyState !== WebSocket.OPEN) return;
 
-        // 服务器刚就绪：先将预录制缓冲中的历史帧补发，弥补等待期间的语音
         if (pre_capture_chunks.length > 0) {
           const history = pre_capture_chunks.splice(0);
-          add_log('SYS', `补发预录制音频: ${history.length} 帧 (~${history.length * 256}ms)`);
+          add_log('SYS', `补发预录制: ${history.length} 帧`);
           for (const chunk of history) {
-            server_connection.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: chunk }));
+            server_connection.send(chunk);
             append_audio_count++;
           }
         }
 
         append_audio_count++;
         if (append_audio_count === 1) {
-          add_log('SYS', `首帧音频（实时）: ${pcm16_audio.length} samples (${(pcm16_audio.length/TARGET_SAMPLE_RATE*1000).toFixed(0)}ms), PCM16 ${pcm16_audio.byteLength}B`);
+          add_log('SYS', `首帧: ${pcm16_audio.length} samples (${(pcm16_audio.length/TARGET_SAMPLE_RATE*1000).toFixed(0)}ms)`);
         }
         if (append_audio_count % 30 === 0) {
-          add_log('SEND', 'input_audio_buffer.append', `(已发送 ${append_audio_count} 个切片)`);
+          add_log('SEND', 'audio', `${append_audio_count} chunks sent`);
         }
 
-        server_connection.send(JSON.stringify({
-          type: 'input_audio_buffer.append',
-          audio: base64_audio_string
-        }));
+        server_connection.send(pcm16_audio.buffer);
       };
 
       audio_gain_node = audio_processor_engine.createGain();
       audio_gain_node.gain.value = 0;
 
+      audio_analyser_node = audio_processor_engine.createAnalyser();
+      audio_analyser_node.fftSize = 64; // 32 bins
+      audio_analyser_node.smoothingTimeConstant = 0.5; // Nothing设计：更少的平滑，更机械的敲击感
+
+      audio_capture_node.connect(audio_analyser_node);
       audio_capture_node.connect(audio_sender_node);
       audio_sender_node.connect(audio_gain_node);
       audio_gain_node.connect(audio_processor_engine.destination);
+
+      start_waveform_animation();
+    }
+
+    function start_waveform_animation() {
+      if (waveform_req_id) cancelAnimationFrame(waveform_req_id);
+      const container = document.getElementById('audio_waveform');
+      if (container) container.style.opacity = '1';
+
+      const dataArray = new Uint8Array(audio_analyser_node.frequencyBinCount);
+
+      function draw() {
+        if (!is_audio_capturing || !audio_analyser_node) {
+          waveform_bars.forEach(b => b.style.height = '2px');
+          if (audio_analyser_node) waveform_req_id = requestAnimationFrame(draw);
+          return;
+        }
+        audio_analyser_node.getByteFrequencyData(dataArray);
+
+        // 共 8 个柱体，间隔取低频到中频的数据
+        for (let i = 0; i < waveform_bars.length; i++) {
+          const val = dataArray[i * 2] / 255.0; // 0.0 ~ 1.0
+          const height = Math.max(2, val * 16); // 最大 16px
+          waveform_bars[i].style.height = height + 'px';
+        }
+        waveform_req_id = requestAnimationFrame(draw);
+      }
+      draw();
+    }
+
+    function stop_waveform_animation() {
+      if (waveform_req_id) {
+        cancelAnimationFrame(waveform_req_id);
+        waveform_req_id = null;
+      }
+      const container = document.getElementById('audio_waveform');
+      if (container) container.style.opacity = '0.3';
+      waveform_bars.forEach(b => b.style.height = '2px');
     }
 
     // ----- 底层工具：音频格式转换 -----
 
-    /**
-     * 线性插值重采样（与 client.py 的 librosa.load(sr=16000) 对齐）。
-     * 当浏览器 AudioContext 实际采样率不是 16000 时使用。
-     */
+    /** 线性插值重采样 */
     function resample_linear(input_float32, from_sr, to_sr) {
       if (from_sr === to_sr) return input_float32;
       const ratio = from_sr / to_sr;
@@ -1223,10 +1768,7 @@
       return output;
     }
 
-    /**
-     * Float32 [-1,1] → PCM16 Int16Array
-     * 与 client.py 的 (audio_f32 * 32767).astype(np.int16) 对齐
-     */
+    /** Float32 [-1,1] → PCM16 Int16Array */
     function convert_float_to_pcm16(float_array) {
       const int16_array = new Int16Array(float_array.length);
       for (let i = 0; i < float_array.length; i++) {
@@ -1236,20 +1778,9 @@
       return int16_array;
     }
 
-    function convert_bytes_to_base64(buffer) {
-      const bytes = new Uint8Array(buffer);
-      let binary_string = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary_string += String.fromCharCode(bytes[i]);
-      }
-      return btoa(binary_string);
-    }
-
     // =========================================
     // 文件上传模式：选择音频文件 → 解码 → 重采样 16kHz → 分包发送
-    // 与 client.py 完全对齐：librosa.load(sr=16000) → PCM16 → base64 → WebSocket
     // =========================================
-
     ui_upload_button.addEventListener('click', () => {
       if (is_file_uploading || is_microphone_working) return;
       ui_file_input.click();
@@ -1266,7 +1797,7 @@
       if (is_file_uploading || is_microphone_working) return;
       is_file_uploading = true;
 
-      ui_upload_button.innerText = '发送中...';
+      ui_upload_button.innerText = 'SENDING...';
       ui_upload_button.classList.add('is-sending');
       ui_upload_button.disabled = true;
       ui_button.disabled = true;
@@ -1276,27 +1807,24 @@
       const PACKET_MS = 100;
       const packet_samples = Math.floor(TARGET_SAMPLE_RATE * PACKET_MS / 1000);
 
-      add_log('SYS', `上传音频: ${fname} (${(file.size/1024).toFixed(1)}KB)`);
+      add_log('SYS', `上传: ${fname} (${(file.size/1024).toFixed(1)}KB)`);
 
       try {
-        // 1. 读取文件 → ArrayBuffer
         const array_buffer = await file.arrayBuffer();
 
-        // 2. 解码音频（用临时 AudioContext，兼容性最好）
         const decode_ctx = new (window.AudioContext || window.webkitAudioContext)();
         let audio_buffer;
         try {
           audio_buffer = await decode_ctx.decodeAudioData(array_buffer);
         } catch (e) {
           add_log('ERR', '音频解码失败', e.message);
-          alert(`无法解码音频文件 "${fname}"：${e.message}`);
+          alert(`无法解码: "${fname}": ${e.message}`);
           reset_upload_ui();
           decode_ctx.close();
           return;
         }
         decode_ctx.close();
 
-        // 3. 提取单声道 + 重采样到 16kHz（OfflineAudioContext 方式，精度高于线性插值）
         const original_sr = audio_buffer.sampleRate;
         const original_len = audio_buffer.length;
         let mono_16k;
@@ -1315,27 +1843,24 @@
         }
 
         const duration_sec = mono_16k.length / TARGET_SAMPLE_RATE;
-        add_log('SYS', `解码完成: ${original_sr}Hz → ${TARGET_SAMPLE_RATE}Hz, ${duration_sec.toFixed(2)}s, ${mono_16k.length} samples`);
+        add_log('SYS', `解码: ${original_sr}Hz -> ${TARGET_SAMPLE_RATE}Hz, ${duration_sec.toFixed(2)}s`);
 
-        // 4. Float32 → PCM16（与 client.py 对齐）
         const pcm16 = convert_float_to_pcm16(mono_16k);
 
-        // 5. 分包
         const packets = [];
         for (let start = 0; start < pcm16.length; start += packet_samples) {
           const end = Math.min(start + packet_samples, pcm16.length);
           packets.push(pcm16.slice(start, end));
         }
 
-        add_log('SYS', `分包: ${packets.length} 包, 每包 ${PACKET_MS}ms (${packet_samples} samples)`);
+        add_log('SYS', `分包: ${packets.length} x ${PACKET_MS}ms`);
 
-        // 6. 轮询 /health，确认模型就绪后再连 WebSocket
         add_log('SYS', '检查模型就绪状态...');
         await poll_health_until_ready();
         add_log('SYS', '模型已就绪');
 
         const ws = new WebSocket(server_websocket_url);
-        update_ui_status('active', '文件上传: 已连接');
+        update_ui_status('active', 'UPLOADING');
 
         const ws_ready = new Promise((resolve, reject) => {
           ws.onopen = () => resolve();
@@ -1344,9 +1869,8 @@
         });
 
         await ws_ready;
-        add_log('SYS', '文件模式: WebSocket 已连接');
+        add_log('SYS', `文件模式: WebSocket 已连接 (${current_server_config.name || current_server_config.host}:${current_server_config.port})`);
 
-        // 等待 session.created（模型已就绪，直接 200ms 后 resolve）
         let file_session_id = '';
         const ready_promise = new Promise((resolve) => {
           ws.onmessage = (event) => {
@@ -1359,24 +1883,48 @@
                 ws.send(JSON.stringify({ type: 'session.update', session: sess_update }));
                 add_log('SEND', 'session.update', JSON.stringify(sess_update).slice(0, 60));
               }
+
+              // 打印所有前端配置（同麦克风连接）
+              add_log('CFG', `服务器 ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})`);
+              add_log('CFG', `分块间隔 ${cfg_chunk_ms.value} 毫秒`);
+              add_log('CFG', cfg_prompt.value ? `提示词「${cfg_prompt.value}」` : '未设置提示词');
+              add_log('CFG', cfg_use_history.checked ? '伪流式（使用历史上下文，支持回退）' : '非流式（不使用历史上下文）');
+              const rb = cfg_history_rollback_strategy.value;
+              const rv = cfg_history_rollback_value.value;
+              if (rb === 'none') {
+                add_log('CFG', '未启用回退');
+              } else if (rb === 'ratio') {
+                add_log('CFG', `按比例回退，回退比例为 ${rv}`);
+              } else if (rb === 'chars') {
+                add_log('CFG', `按字符数回退，回退数量为 ${rv} 字符`);
+              } else if (rb === 'words') {
+                add_log('CFG', `按词数回退，回退数量为 ${rv} 词（英文按空格，中文按结巴）`);
+              } else if (rb === 'tokens') {
+                add_log('CFG', `按 token 数回退，回退数量为 ${rv} token`);
+              } else {
+                add_log('CFG', `回退策略 ${rb}，参数 ${rv}`);
+              }
+              add_log('CFG', cfg_turn_detection.value === 'server_vad' ? '说话检测使用 VAD' : '说话检测不使用 VAD');
               setTimeout(() => resolve(), 200);
             }
           };
         });
         await ready_promise;
-        add_log('SYS', '模型就绪，开始发送音频包');
 
-        // 准备 UI — 文件上传也用 session-block 结构
-        if (ui_cursor.parentNode !== ui_text_box) {
-          ui_text_box.appendChild(ui_cursor);
-        }
+        // 创建文件上传的 session block，放入 active_area
+        session_counter++;
         const file_block = document.createElement('div');
-        file_block.className = 'session-block';
+        file_block.className = 'session-block active';
         const file_header = document.createElement('div');
         file_header.className = 'session-block-header';
-        file_header.innerHTML = `<span style="color:#8b5cf6;font-weight:600;">📁 ${fname}</span> ${duration_sec.toFixed(1)}s`;
+        const now = new Date();
+        const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+        file_header.innerHTML = `${fname} <span style="color:var(--text-disabled);margin-left:8px">${duration_sec.toFixed(1)}s</span> ${file_session_id || '#' + session_counter}`;
         file_block.appendChild(file_header);
-        ui_text_box.insertBefore(file_block, ui_cursor);
+
+        ui_active_area.innerHTML = '';
+        ui_active_area.appendChild(file_block);
+        ui_active_area.appendChild(ui_cursor);
 
         current_turn_div = document.createElement('div');
         current_turn_div.className = 'turn-line';
@@ -1387,7 +1935,6 @@
         ui_cursor.style.display = 'inline-block';
         current_turn_div.appendChild(ui_cursor);
 
-        // 7. 接收识别结果（切换 onmessage）
         let file_final_transcript = "";
         const completed_event = new Promise((resolve) => {
           ws.onmessage = (event) => {
@@ -1397,7 +1944,7 @@
               const delta = data.delta || "";
               current_turn_text = current_turn_text.slice(0, cursor) + delta;
               if (current_turn_node) current_turn_node.textContent = current_turn_text;
-              ui_text_box.scrollTop = ui_text_box.scrollHeight;
+              ui_active_area.scrollIntoView({ block: 'end' });
             } else if (data.type === 'conversation.item.input_audio_transcription.completed') {
               if (data.transcript !== undefined && current_turn_node) {
                 current_turn_text = data.transcript;
@@ -1411,20 +1958,16 @@
           };
         });
 
-        // 8. 按真实时间节奏发送音频包（模拟实时流式，与麦克风行为一致）
-        // 服务端会按 chunk_ms 间隔做流式推理，而不是一次性拿到全部音频
         const send_t0 = performance.now();
         for (let i = 0; i < packets.length; i++) {
-          const b64 = convert_bytes_to_base64(packets[i].buffer);
-          ws.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: b64 }));
+          ws.send(packets[i].buffer);
 
           if ((i + 1) % Math.max(1, Math.floor(packets.length / 5)) === 0 || i === packets.length - 1) {
             const pkt_time = (i + 1) * PACKET_MS / 1000;
-            add_log('SEND', 'append', `${i+1}/${packets.length} (${pkt_time.toFixed(1)}s/${duration_sec.toFixed(1)}s)`);
-            ui_upload_button.innerText = `发送 ${Math.round((i+1)/packets.length*100)}%`;
+            add_log('SEND', 'audio', `${i+1}/${packets.length} (${pkt_time.toFixed(1)}s/${duration_sec.toFixed(1)}s)`);
+            ui_upload_button.innerText = `${Math.round((i+1)/packets.length*100)}%`;
           }
 
-          // 按真实时间节奏等待，让服务器有时间按 chunk_ms 做流式推理
           const target_time = (i + 1) * PACKET_MS;
           const elapsed = performance.now() - send_t0;
           const wait = target_time - elapsed;
@@ -1433,19 +1976,16 @@
           }
         }
 
-        // 9. commit
         ws.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
         const send_cost = ((performance.now() - send_t0) / 1000).toFixed(2);
-        add_log('SEND', 'commit', `${packets.length} 包已发送 (${send_cost}s, 模拟实时)`);
-        ui_upload_button.innerText = '等待结果...';
+        add_log('SEND', 'commit', `${packets.length} pkts (${send_cost}s)`);
+        ui_upload_button.innerText = 'WAITING...';
 
-        // 10. 等待结果
         await Promise.race([
           completed_event,
           new Promise((_, reject) => setTimeout(() => reject(new Error('等待结果超时')), 120000)),
         ]);
 
-        // 完成标记
         ui_cursor.style.display = 'none';
         if (current_turn_div) {
           const check = document.createElement('span');
@@ -1456,20 +1996,21 @@
             current_turn_div.removeChild(ui_cursor);
           }
         }
-        if (ui_cursor.parentNode !== ui_text_box) {
-          ui_text_box.appendChild(ui_cursor);
-        }
-        ui_text_box.scrollTop = ui_text_box.scrollHeight;
+        // 上传完成：移入历史区
+        file_block.classList.remove('active');
+        ui_history_area.insertBefore(file_block, ui_history_area.firstChild);
+        ui_history_label.style.display = '';
+        ui_active_area.innerHTML = '';
         current_turn_text = "";
         current_turn_node = null;
         current_turn_div = null;
 
-        add_log('SYS', `文件识别完成: "${(file_final_transcript || '').slice(0, 80)}"`);
+        add_log('SYS', `完成: "${(file_final_transcript || '').slice(0, 80)}"`);
         ws.close();
 
       } catch (err) {
         add_log('ERR', '文件上传失败', err.message);
-        update_ui_status('error', '文件上传失败');
+        update_ui_status('error', 'UPLOAD FAILED');
       } finally {
         reset_upload_ui();
       }
@@ -1477,12 +2018,12 @@
 
     function reset_upload_ui() {
       is_file_uploading = false;
-      ui_upload_button.innerText = '上传音频';
+      ui_upload_button.innerText = 'UPLOAD';
       ui_upload_button.classList.remove('is-sending');
       ui_upload_button.disabled = false;
       ui_button.disabled = false;
       ui_button.style.opacity = '';
-      update_ui_status('active', '等待下一次输入');
+      update_ui_status('active', 'READY');
     }
   </script>
 </body>

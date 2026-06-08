@@ -1,0 +1,37 @@
+startup:
+  model_type: qwen3-asr
+  port: 8002
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.6
+  save_audio: true
+  audio_save_dir: examples/qwen3asr/saved_audios
+  gpu_ids: '0'
+  ssl:
+    enabled: true
+runtime:
+  log_level: INFO
+  prompt: 请用中文转录这段音频。
+  chunk_ms: 1000
+  sampling_params:
+    temperature: 0.01
+    top_p: 0.1
+    top_k: 1
+    max_tokens: 512
+    seed: 42
+    repetition_penalty: 1.05
+  silence_skip:
+    enabled: true
+    frame_ms: 20
+    rms_threshold: 0.003
+    min_voiced_frames: 1
+  turn_detection:
+    type: none
+    threshold: 0.97
+    silence_duration_ms: 700
+    prefix_padding_ms: 100
+  history_rollback:
+    enabled: false
+    strategy: none
+    value: 0
+  history_reset_chunk_num: 2
+  min_history_chars: 5

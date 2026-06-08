@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime artifacts
+saved_audios/
+nohup.out
+*.log
+*.pid
+logs/
+backup/
+
+# Example run artifacts
+examples/*/results/
+examples/qwen3asr/run_bench.sh
+examples/qwen3asr/run_concurrency.sh
+
+# Benchmark data & results (keep scripts, ignore generated data)
+benchmarks/*/results_*/
+benchmarks/*/latency_*/
+benchmarks/*/wav.list
+benchmarks/*/ref.txt
+
+# Test data directories
+data/
+
+# Temporary worktree checkouts used for comparison testing
+tests/worktrees/
+
+# Local reports & Dev docs
+TESTING_REPORT.local.md
+docs/
+
+# Local startup scripts (personal env/paths)
+*.local.sh
+examples/start_server.local.*.sh
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
