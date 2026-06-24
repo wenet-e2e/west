@@ -14,6 +14,7 @@ sentencepiece==0.2.1
 pillow==12.1.1
 vllm==0.16.0
 qwen-omni-utils==0.0.8
+WeTextProcessing==1.0.1
 nagisa==0.2.11
 soynlp==0.0.493
 sox

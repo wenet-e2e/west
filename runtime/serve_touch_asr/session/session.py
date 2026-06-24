@@ -186,21 +186,32 @@ class RealtimeSession:
                         audio_arr = np.frombuffer(
                             raw_bytes, dtype=np.int16).astype(
                             np.float32) / 32768.0
+                        # 格式: time_HHMMSS-sess_xxx-segment_0001
                         timestamp = time.strftime("%H%M%S")
-                        save_path = os.path.join(
-                            date_dir,
-                            f"{self.session_id}_{timestamp}.wav")
+                        seg = 1
+                        while True:
+                            base_name = (f"time_{timestamp}-"
+                                         f"sess_{self.session_id}-"
+                                         f"segment_{seg:04d}")
+                            wav_path = os.path.join(
+                                date_dir, f"{base_name}.wav")
+                            if not os.path.exists(wav_path):
+                                break
+                            seg += 1
+                        txt_path = wav_path.replace(".wav", ".txt")
 
                         audio_dur = len(audio_arr) / self.sr
-                        transcript_snap = self.asr.accumulated_text[:80]
+                        transcript_text = self.asr.accumulated_text
                         sid_snap = self.session_id
 
                         def _save_task():
-                            sf.write(save_path, audio_arr, 16000)
+                            sf.write(wav_path, audio_arr, 16000)
+                            with open(txt_path, "w", encoding="utf-8") as f:
+                                f.write(transcript_text)
                             logger.info(
                                 f"[{sid_snap}] Audio saved to "
-                                f"{save_path} ({audio_dur:.2f}s) "
-                                f"text=\"{transcript_snap}\"")
+                                f"{wav_path} ({audio_dur:.2f}s) "
+                                f"text=\"{transcript_text[:80]}\"")
 
                         asyncio.get_running_loop().run_in_executor(
                             None, _save_task)
@@ -222,6 +233,7 @@ class RealtimeSession:
             self.asr.accumulated_text = ""
             self.asr.confirmed_text = ""
             self.asr.language = None
+            self.asr.trailing_punct = ""
             self.speech_detected = False
             self.vad_read_pos = 0
             self.speech_start_byte = 0

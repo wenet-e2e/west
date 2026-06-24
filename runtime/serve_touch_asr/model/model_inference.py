@@ -3,7 +3,7 @@
 
 - build_messages: 构造 Qwen Omni/Qwen ASR 输入消息和音频 payload
 - run_model_inference: 调用 engine.generate 并流式产出文本 delta
-- history_rollback/history_reset/min_history_chars 在这里参与 prompt 拼接
+- history_base 由 inference_loop 统一计算并在这里参与 prompt 拼接
 - 模块会被 inference_loop 热 reload，避免持有全局模型资源
 """
 import asyncio
@@ -15,13 +15,17 @@ from typing import AsyncGenerator
 
 import numpy as np
 from engine.config import InferenceConfig
-from model.history_rollback import apply_history_rollback
-from model.transcript_postprocess import (format_history_prefix,
+from model.transcript_postprocess import (merge_transcript_boundary,
                                           postprocess_transcript)
 from vllm.sampling_params import SamplingParams
 
 logger = logging.getLogger("RealtimeASR")
 EVENT_NAME_WIDTH = 18
+LANGUAGE_TEXT = {
+    "Chinese": "中文",
+    "English": "英文",
+    "Cantonese": "粤语",
+}
 
 
 def evt_prefix(session_id: str, event_name: str) -> str:
@@ -37,9 +41,45 @@ def process_mm_info_worker(messages, process_mm_info_fn):
     return process_mm_info_fn(messages, use_audio_in_video=True)
 
 
+_DEFAULT_USER_PROMPT = "将这段语音转录为纯文本"
+_CONTINUATION_PREFIX_PUNCT = frozenset("，。,.!?！？、；;：:…·—–")
+
+
+def _strip_continuation_prefix_punct(text: str) -> str:
+    """Remove boundary punctuation at the start of a continued chunk."""
+    if not text:
+        return text
+    if text[0] in _CONTINUATION_PREFIX_PUNCT:
+        return text[1:]
+    return text
+
+
+def build_qwen3omni_user_prompt(
+    user_prompt: str = "",
+    context: str = "",
+    language: str = "",
+) -> str:
+    """Build Qwen3-Omni user text from task prompt and optional context."""
+    if not user_prompt:
+        user_prompt = _DEFAULT_USER_PROMPT
+        logger.debug(
+            f"user_prompt is empty, using default: \"{_DEFAULT_USER_PROMPT}\"")
+
+    language_label = LANGUAGE_TEXT.get(language, language)
+    user_prompt = user_prompt.replace("{language}", language_label)
+
+    if context:
+        return (
+            f"参考上下文：\n{context}\n\n"
+            f"请结合参考上下文，{user_prompt}。"
+        )
+
+    return user_prompt
+
+
 async def run_model_inference(
     audio_numpy: np.ndarray,
-    prompt_text: str,
+    user_prompt: str,
     session,  # RealtimeSession (duck-typed, 不直接 import 避免循环依赖)
     engine,
     processor,
@@ -47,6 +87,10 @@ async def run_model_inference(
     infer_tag: str = "",
     model_type: str = "qwen3-omni",
     cfg: "InferenceConfig | None" = None,
+    system_prompt: str = "",
+    context: str = "",
+    language: str = "",
+    history_base: str = "",
 ) -> AsyncGenerator[str, None]:
     """
     封装调用标准 vLLM 引擎，yield 出本次推理的完整识别文本。
@@ -65,24 +109,48 @@ async def run_model_inference(
     if cfg is None:
         cfg = InferenceConfig()
 
-    # 构建 messages
+    user_prompt = user_prompt.strip()
+    system_prompt = system_prompt.strip()
+    context = context.strip()
+    language = language.strip()
+
+    # 构建 messages：Omni 使用自然语言 prompt；ASR 使用 context + 协议前缀。
     if model_type == "qwen3-omni":
-        messages = [{
+        messages = []
+        if system_prompt:
+            messages.append({
+                "role": "system",
+                "content": [{
+                    "type": "text",
+                    "text": system_prompt
+                }]
+            })
+        messages.append({
             "role": "user",
             "content": [{
                 "type": "audio",
                 "audio": audio_numpy
             }, {
                 "type": "text",
-                "text": prompt_text
+                "text": build_qwen3omni_user_prompt(
+                    user_prompt, context, language)
             }]
-        }]
+        })
     else:
-        # qwen3-asr: system message 当 prompt，user message 承载音频
+        # qwen3-asr: system message 是上下文，任务/语种由 assistant 前缀约束。
+        # user_prompt/system_prompt 仅适用于 Qwen3-Omni，ASR 模型忽略。
+        if user_prompt:
+            logger.debug(
+                f"{tag} qwen3-asr ignores user_prompt "
+                f"(only context/language apply)")
+        if system_prompt:
+            logger.debug(
+                f"{tag} qwen3-asr ignores system_prompt "
+                f"(only context/language apply)")
         messages = [
             {
                 "role": "system",
-                "content": prompt_text
+                "content": context
             },
             {
                 "role": "user",
@@ -96,6 +164,12 @@ async def run_model_inference(
     feat_t0 = time.time()
     prompt_formatted = processor.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True)
+    forced_asr_language = (
+        language
+        if model_type == "qwen3-asr" and language
+        else None)
+    if model_type == "qwen3-asr" and language:
+        prompt_formatted += f"language {language}<asr_text>"
 
     if model_type == "qwen3-omni" and process_mm_info_fn is not None:
         audios, _, _ = await loop.run_in_executor(
@@ -107,34 +181,27 @@ async def run_model_inference(
 
     feat_cost = time.time() - feat_t0
 
-    use_history = session.asr.use_history
-
     async with session.lock:
+        # ``history`` is only for diagnostics; ``history_base`` is the
+        # single rollback result computed by inference_loop and used below.
         history = session.asr.accumulated_text
-        history_rollback_cfg = session.asr.history_rollback_config
         current_chunk_id = session.asr.chunk_id
         history_reset_chunk_num = session.asr.history_reset_chunk_num
-        min_history_chars = session.asr.min_history_chars
         history_language = session.asr.language
 
-    if use_history:
-        text_to_append = apply_history_rollback(
-            history, history_rollback_cfg,
-            tokenizer=processor.tokenizer,
-            current_chunk_id=current_chunk_id,
-            history_reset_chunk_num=history_reset_chunk_num,
-            min_history_chars=min_history_chars
-        )
-    else:
-        text_to_append = ""
-
-    if text_to_append:
-        text_to_append_formatted = format_history_prefix(
-            text_to_append,
-            history_language or "Chinese",
-            model_type)
-        prompt_formatted += text_to_append_formatted
-        dropped = history[len(text_to_append):]
+    if history_base:
+        if model_type == "qwen3-asr":
+            if forced_asr_language:
+                history_base_formatted = history_base
+            else:
+                history_lang = history_language or "Chinese"
+                history_base_formatted = (
+                    f"language {history_lang}<asr_text>{history_base}"
+                )
+        else:
+            history_base_formatted = history_base
+        prompt_formatted += history_base_formatted
+        dropped = history[len(history_base):]
         reset_info = (
             f" (chunk {current_chunk_id}/"
             f"{history_reset_chunk_num} reset)"
@@ -144,27 +211,19 @@ async def run_model_inference(
             f"{evt_prefix(sid, 'CHUNK_HISTORY')} "
             f"{tag} History: "
             f"\"{history[:60]}\"({len(history)}) "
-            f"-> append \"{text_to_append[:60]}\""
-            f"({len(text_to_append)}) "
+            f"-> append \"{history_base[:60]}\""
+            f"({len(history_base)}) "
             f"drop \"{dropped}\"({len(dropped)}) "
-            f"[{history_rollback_cfg.strategy}/"
-            f"{history_rollback_cfg.value}]{reset_info}")
+            f"{reset_info}")
     else:
         if current_chunk_id <= history_reset_chunk_num:
             reason = (
                 f"[chunk {current_chunk_id}/"
                 f"{history_reset_chunk_num} history_reset]")
-        elif (min_history_chars > 0 and history
-              and len(history) <= min_history_chars):
-            reason = (
-                f"[min_history_chars={min_history_chars} "
-                f"history_len={len(history)} dropped]")
-        elif use_history:
-            reason = (
-                f"[{history_rollback_cfg.strategy}/"
-                f"{history_rollback_cfg.value}]")
+        elif history:
+            reason = "[history_base_empty]"
         else:
-            reason = "[use_history=False]"
+            reason = "[empty_history]"
         logger.info(
             f"{evt_prefix(sid, 'CHUNK_HISTORY')} "
             f"{tag} History: (empty) {reason}")
@@ -224,17 +283,21 @@ async def run_model_inference(
                 token_count += 1
                 raw_text += delta_text
                 result = postprocess_transcript(
-                    raw_text, model_type)
-                if first_token_time is None and result.text:
+                    raw_text, model_type,
+                    user_language=forced_asr_language)
+                display_text = (
+                    _strip_continuation_prefix_punct(result.text)
+                    if history_base else result.text)
+                if first_token_time is None and display_text:
                     first_token_time = time.time()
                     logger.info(
                         f"{evt_prefix(sid, 'CHUNK_FIRST_TOKEN')} "
                         f"{tag} FirstToken: "
-                        f"\"{result.text[:20]}\" "
+                        f"\"{display_text[:20]}\" "
                         f"latency="
                         f"{first_token_time - gen_t0:.3f}s")
-                if result.text:
-                    yield result.text
+                if display_text:
+                    yield display_text
 
         gen_cost = time.time() - gen_t0
         total_cost = time.time() - infer_t0
@@ -243,8 +306,8 @@ async def run_model_inference(
             logger.warning(
                 f"{evt_prefix(sid, 'DIAG_TOKENS_ZERO')} "
                 f"{tag} vLLM generate yielded NO output at all | "
-                f"history_prefix_len={len(text_to_append)} "
-                f"history_prefix=\"{text_to_append[:60]}\" "
+                f"history_prefix_len={len(history_base)} "
+                f"history_prefix=\"{history_base[:60]}\" "
                 f"(possible preemption/cancellation)")
         elif token_count == 0 and last_output is not None:
             out0 = last_output.outputs[0]
@@ -258,24 +321,35 @@ async def run_model_inference(
                 f"finish_reason={finish_r} stop_reason={stop_r} "
                 f"raw_text=\"{diag_raw[:100]}\" "
                 f"output_token_ids_len={num_tokens} "
-                f"history_prefix_len={len(text_to_append)} "
-                f"history_prefix=\"{text_to_append[:60]}\" "
+                f"history_prefix_len={len(history_base)} "
+                f"history_prefix=\"{history_base[:60]}\" "
                 f"prompt_tail=\"{prompt_formatted[-200:]}\"")
 
         # Keep history/cursor state punctuation-free. The caller commits
         # ``session.asr.accumulated_text`` after this generator finishes.
-        result = postprocess_transcript(raw_text, model_type)
+        result = postprocess_transcript(
+            raw_text, model_type,
+            user_language=forced_asr_language)
         language = result.language
-        clean_text = result.text
+        clean_text = (
+            _strip_continuation_prefix_punct(result.text)
+            if history_base else result.text)
 
-        new_accumulated = (
-            text_to_append + clean_text
-            if use_history else clean_text)
         async with session.lock:
             old_accumulated = session.asr.accumulated_text
-            session.asr.accumulated_text = new_accumulated
-            session.asr.trailing_punct = result.trailing_punct
-            session.asr.language = language if language else None
+            if clean_text:
+                new_accumulated = merge_transcript_boundary(
+                    history_base, clean_text)
+                session.asr.accumulated_text = new_accumulated
+                session.asr.confirmed_text = new_accumulated
+                session.asr.trailing_punct = result.trailing_punct
+                session.asr.language = language if language else None
+            else:
+                new_accumulated = old_accumulated
+                if result.trailing_punct:
+                    session.asr.trailing_punct = result.trailing_punct
+                if language:
+                    session.asr.language = language
 
         logger.info(
             f"{evt_prefix(sid, 'CHUNK_INFER_DONE')} "

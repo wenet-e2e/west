@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright (c) 2026 Pengshen Zhang
 """Realtime ASR Server: 入口、路由与连接编排。
 
@@ -12,6 +13,7 @@ import functools
 import json
 import logging
 import os
+import sys
 import traceback
 import uuid
 from pathlib import Path
@@ -25,6 +27,7 @@ from infra import http_routes
 from infra.logging_setup import setup_logging
 from infra.ssl_context import create_ssl_context
 from model.history_rollback import HistoryRollbackConfig
+from model.transcript_postprocess import warmup_inverse_normalizer
 from model.vad import SileroVadProvider
 from session.inference_loop import run_inference_loop
 from session.sender import RealtimeSender
@@ -36,28 +39,77 @@ from session.vad_loop import run_vad_loop
 logger: logging.Logger = logging.getLogger("RealtimeASR")
 
 
-def _on_config_reload(cfg: InferenceConfig) -> None:
-    new_level = cfg.log_level
-    numeric = getattr(logging, new_level, logging.INFO)
-    if logger.level != numeric:
-        logger.setLevel(numeric)
-        logger.info(f"Log level changed to {new_level}")
-    logger.info("Inference config reloaded")
+def _ensure_itn_ready(
+    service_runtime: ServiceRuntime,
+    language: str,
+    requested: bool,
+) -> bool:
+    """Warm up ITN when requested; never fail ASR startup/session updates.
+
+    NOTE: itn_available/itn_lang/itn_error describe only the process-level
+    Chinese ITN warmup. They are advisory diagnostics, not a session gate.
+    Non-Chinese transcripts are left raw in post-processing.
+    """
+    if not requested:
+        service_runtime.settings.itn_available = True
+        service_runtime.settings.itn_lang = ""
+        service_runtime.settings.itn_error = ""
+        return False
+
+    previous_available = service_runtime.settings.itn_available
+    previous_lang = service_runtime.settings.itn_lang
+    previous_error = service_runtime.settings.itn_error
+    available, lang, error = warmup_inverse_normalizer(language)
+    service_runtime.settings.itn_available = available
+    service_runtime.settings.itn_lang = lang
+    service_runtime.settings.itn_error = error
+    if available:
+        if not previous_available or previous_lang != lang:
+            logger.info(f"ITN warmup succeeded (lang={lang})")
+        return True
+
+    if (
+        previous_available
+        or previous_lang != lang
+        or previous_error != error
+    ):
+        logger.warning(
+            "ITN requested but unavailable; final transcripts will remain raw "
+            f"(lang={lang}, error={error})")
+    return False
+
+
+def _make_config_reload_handler(service_runtime: ServiceRuntime):
+    def _on_config_reload(cfg: InferenceConfig) -> None:
+        new_level = cfg.log_level
+        numeric = getattr(logging, new_level, logging.INFO)
+        if logger.level != numeric:
+            logger.setLevel(numeric)
+            logger.info(f"Log level changed to {new_level}")
+        _ensure_itn_ready(
+            service_runtime,
+            language=cfg.language,
+            requested=cfg.itn_enabled,
+        )
+        logger.info("Inference config reloaded")
+
+    return _on_config_reload
 
 
 def _build_service_runtime(
     settings: ServerSettings,
 ) -> ServiceRuntime:
     """根据 ServerSettings 构造进程级 ServiceRuntime。"""
-    return ServiceRuntime(
-        inference_cfg=InferenceConfigCache(
-            path=settings.inference_config_path,
-            on_reload=_on_config_reload,
-        ),
+    service_runtime = ServiceRuntime(
         vad_provider=SileroVadProvider(
             silero_repo=settings.silero_repo,
         ),
     )
+    service_runtime.inference_cfg = InferenceConfigCache(
+        path=settings.inference_config_path,
+        on_reload=_make_config_reload_handler(service_runtime),
+    )
+    return service_runtime
 
 
 async def realtime_handler(websocket, service_runtime: ServiceRuntime):
@@ -138,14 +190,20 @@ async def realtime_handler(websocket, service_runtime: ServiceRuntime):
                 updated_fields = []
 
                 # --- OpenAI 标准字段 ---
-                # instructions → prompt
+                # instructions → system_prompt (OpenAI 语义：系统提示 / system message)
+                def _log_preview(value: str, limit: int = 80) -> str:
+                    value = value.replace("\n", "\\n")
+                    if len(value) <= limit:
+                        return value
+                    return f"{value[:limit]}...({len(value)} chars)"
+
                 instructions_val = sess_cfg.get("instructions")
                 if instructions_val is not None and isinstance(
-                        instructions_val, str) and len(instructions_val) < 500:
+                        instructions_val, str):
                     async with session.lock:
-                        session.asr.prompt = instructions_val
+                        session.asr.system_prompt = instructions_val
                     updated_fields.append(
-                        f"instructions=\"{session.asr.prompt[:40]}\"")
+                        f"instructions=\"{_log_preview(instructions_val)}\"")
 
                 # audio.input.turn_detection
                 audio_cfg = sess_cfg.get("audio", {})
@@ -160,6 +218,79 @@ async def realtime_handler(websocket, service_runtime: ServiceRuntime):
                         updated_fields.append(f"turn_detection={td_type}")
 
                 # --- extra 自定义扩展字段 ---
+                def _get_str_extra(value):
+                    if value is None:
+                        return None
+                    if not isinstance(value, str):
+                        return None
+                    return value
+
+                def _get_bool_extra(value):
+                    if isinstance(value, bool):
+                        return value
+                    if isinstance(value, str):
+                        lowered = value.strip().lower()
+                        if lowered in ("1", "true", "yes", "on"):
+                            return True
+                        if lowered in ("0", "false", "no", "off"):
+                            return False
+                    return None
+
+                itn_cfg = extra_cfg.get("itn")
+                itn_enabled_val = _get_bool_extra(
+                    itn_cfg.get("enabled")
+                    if isinstance(itn_cfg, dict) else None)
+
+                user_prompt_val = _get_str_extra(
+                    extra_cfg.get("user_prompt"))
+                if user_prompt_val is not None:
+                    async with session.lock:
+                        session.asr.user_prompt = user_prompt_val
+                    updated_fields.append(
+                        f"user_prompt=\"{_log_preview(user_prompt_val)}\"")
+
+                context_val = _get_str_extra(extra_cfg.get("context"))
+                if context_val is not None:
+                    async with session.lock:
+                        session.asr.context = context_val
+                    updated_fields.append(
+                        f"context=\"{_log_preview(context_val)}\"")
+
+                language_val = _get_str_extra(extra_cfg.get("language"))
+                if language_val is not None:
+                    async with session.lock:
+                        session.asr.config_language = language_val
+                        requested_itn_enabled = (
+                            session.asr.itn_enabled
+                            if session.asr.itn_enabled is not None
+                            else cfg.itn_enabled)
+                    updated_fields.append(
+                        f"language={_log_preview(language_val)}")
+                    if itn_enabled_val is None and requested_itn_enabled:
+                        _ensure_itn_ready(
+                            service_runtime,
+                            language=language_val,
+                            requested=True,
+                        )
+                        updated_fields.append(
+                            "itn_warmup=attempted")
+
+                if itn_enabled_val is not None:
+                    async with session.lock:
+                        effective_language = (
+                            session.asr.config_language
+                            if session.asr.config_language is not None
+                            else cfg.language)
+                    _ensure_itn_ready(
+                        service_runtime,
+                        language=effective_language,
+                        requested=itn_enabled_val,
+                    )
+                    async with session.lock:
+                        session.asr.itn_enabled = itn_enabled_val
+                    updated_fields.append(
+                        f"itn_enabled={session.asr.itn_enabled}")
+
                 history_rollback_dict = extra_cfg.get("history_rollback")
                 if history_rollback_dict is not None:
                     new_rb = HistoryRollbackConfig.from_dict(
@@ -241,6 +372,10 @@ async def run_server(settings: ServerSettings):
             f"Audios will be saved to "
             f"./{service_runtime.settings.audio_save_dir}/")
 
+    # Load runtime config once at startup so optional ITN can be warmed before
+    # the first final transcript. Failures only disable ITN, not ASR service.
+    service_runtime.inference_cfg.load()
+
     ssl_context = create_ssl_context(
         use_ssl=settings.use_ssl, logger=logger)
 
@@ -298,6 +433,12 @@ if __name__ == '__main__':
         description='Qwen3-Omni Realtime WebSocket ASR')
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--gpu-ids', type=str, required=True)
+    parser.add_argument(
+        '--port', type=int, default=8001,
+        help='服务监听端口（启动参数，不再来自 yaml）')
+    parser.add_argument(
+        '--tp-size', type=int, default=None,
+        help='tensor parallel size；缺省时按 --gpu-ids 的卡数自动推导')
     parser.add_argument('--config', type=str, required=True)
     parser.add_argument('--silero-model-path', type=str, required=True)
     parser.add_argument('--log-dir', type=str, required=True)
@@ -311,12 +452,26 @@ if __name__ == '__main__':
         config_path.read_text(encoding="utf-8")) or {}
     startup = StartupConfig.model_validate(raw.get("startup", {}))
 
+    gpu_count = len([x for x in args.gpu_ids.split(',') if x.strip()])
+    if args.tp_size is None:
+        tp_size = max(gpu_count, 1)
+    else:
+        tp_size = args.tp_size
+        if tp_size > gpu_count:
+            raise SystemExit(
+                f"--tp-size {tp_size} 大于可见 GPU 数 {gpu_count} "
+                f"(--gpu-ids={args.gpu_ids})")
+        if tp_size < gpu_count:
+            print(
+                f"[warn] --tp-size {tp_size} 小于 GPU 数 {gpu_count}，"
+                f"部分卡将闲置", file=sys.stderr)
+
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
     asyncio.run(run_server(ServerSettings(
         model=args.model,
         host=startup.host,
-        port=startup.port,
-        tensor_parallel_size=startup.tensor_parallel_size,
+        port=args.port,
+        tensor_parallel_size=tp_size,
         gpu_memory_utilization=startup.gpu_memory_utilization,
         save_audio=startup.save_audio,
         history_rollback_strategy=startup.history_rollback_strategy,

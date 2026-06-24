@@ -27,6 +27,26 @@ def _has_cjk(text: str) -> bool:
     return bool(_CJK_PATTERN.search(text))
 
 
+def _is_latin_word_char(ch: str) -> bool:
+    return ch.isascii() and (ch.isalnum() or ch in "_'-")
+
+
+def _avoid_latin_word_split(text: str, rollback_chars: int) -> int:
+    """Expand rollback so kept text does not end inside a Latin word."""
+    if rollback_chars <= 0 or rollback_chars >= len(text):
+        return rollback_chars
+
+    keep_end = len(text) - rollback_chars
+    if not (_is_latin_word_char(text[keep_end - 1])
+            and _is_latin_word_char(text[keep_end])):
+        return rollback_chars
+
+    while keep_end > 0 and _is_latin_word_char(text[keep_end - 1]):
+        keep_end -= 1
+
+    return len(text) - keep_end
+
+
 def _rollback_words_by_space(text: str, n_words: int) -> int:
     """英文：按空格从尾部回退 N 个词，返回要删掉的字符数。"""
     if n_words <= 0:
@@ -131,9 +151,11 @@ class HistoryRollbackConfig:
         if not text or self.strategy == "none" or self.value <= 0:
             return 0
         if self.strategy == "ratio":
-            return max(0, int(len(text) * min(self.value, 1.0)))
+            rb = max(0, int(len(text) * min(self.value, 1.0)))
+            return _avoid_latin_word_split(text, rb)
         elif self.strategy == "chars":
-            return min(int(self.value), len(text))
+            rb = min(int(self.value), len(text))
+            return _avoid_latin_word_split(text, rb)
         elif self.strategy == "words":
             n_words = int(self.value)
             if _has_cjk(text):
@@ -145,8 +167,10 @@ class HistoryRollbackConfig:
                 logger.warning(
                     "tokens strategy requires tokenizer, "
                     f"falling back to char-based rollback (n={n_tokens})")
-                return min(n_tokens, len(text))
-            return _rollback_tokens(text, n_tokens, tokenizer)
+                rb = min(n_tokens, len(text))
+                return _avoid_latin_word_split(text, rb)
+            rb = _rollback_tokens(text, n_tokens, tokenizer)
+            return _avoid_latin_word_split(text, rb)
         return 0
 
     def apply(self, text: str, tokenizer=None) -> str:

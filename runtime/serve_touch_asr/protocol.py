@@ -20,12 +20,26 @@ def session_snapshot(
     """构建符合 OpenAI Realtime 协议的 session 对象快照。"""
     cfg = service_runtime.inference_cfg.load()
     eff_td = cfg.turn_detection.type
-    eff_prompt = session.asr.prompt or cfg.prompt
+    eff_user_prompt = (session.asr.user_prompt
+                       if session.asr.user_prompt is not None
+                       else cfg.user_prompt)
+    eff_system_prompt = (session.asr.system_prompt
+                         if session.asr.system_prompt is not None
+                         else cfg.system_prompt)
+    eff_context = (session.asr.context
+                   if session.asr.context is not None
+                   else cfg.context)
+    eff_language = (session.asr.config_language
+                    if session.asr.config_language is not None
+                    else cfg.language)
+    eff_itn_enabled = (session.asr.itn_enabled
+                       if session.asr.itn_enabled is not None
+                       else cfg.itn_enabled)
     return {
         "id": session_id,
         "object": "realtime.session",
         "model": service_runtime.settings.model_name,
-        "instructions": eff_prompt,
+        "instructions": eff_system_prompt,
         "audio": {
             "input": {
                 "format": {"type": "audio/pcm", "rate": 16000},
@@ -40,6 +54,17 @@ def session_snapshot(
         },
         "extra": {
             "chunk_ms": session.asr.chunk_ms or cfg.chunk_ms,
+            "user_prompt": eff_user_prompt,
+            "context": eff_context,
+            "language": eff_language,
+            "itn": {
+                # enabled: 是否想用（会话级开关）
+                "enabled": bool(eff_itn_enabled),
+                # available: 是否可用（进程级预热诊断）
+                "available": service_runtime.settings.itn_available,
+                # error: available=False 时的失败原因（用于前端安装提示）
+                "error": service_runtime.settings.itn_error,
+            },
             "use_history": session.asr.use_history,
             "history_rollback": {
                 "enabled": (

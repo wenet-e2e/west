@@ -107,10 +107,15 @@ class StreamingAsrState:
     accumulated_text: str = ""
     confirmed_text: str = ""
     language: Optional[str] = None
+    trailing_punct: str = ""
     history_rollback_config: HistoryRollbackConfig = field(
         init=False)
     chunk_ms: Optional[int] = None
-    prompt: Optional[str] = None
+    system_prompt: Optional[str] = None
+    user_prompt: Optional[str] = None
+    context: Optional[str] = None
+    config_language: Optional[str] = None
+    itn_enabled: Optional[bool] = None
     use_history: bool = True
     history_reset_chunk_num: int = 0
     min_history_chars: int = 0

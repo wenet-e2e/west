@@ -11,8 +11,6 @@ import os
 import time
 from typing import TYPE_CHECKING
 
-from engine.env_snapshot import (log_startup_gpu_snapshot,
-                                 log_startup_host_snapshot)
 from engine.runtime import EnginePhase
 from qwen_asr.core.transformers_backend import Qwen3ASRProcessor
 from qwen_asr.core.vllm_backend import Qwen3ASRForConditionalGeneration
@@ -73,9 +71,7 @@ async def init_engine(
         "========== 模型初始化开始 "
         "(过程可能需要数分钟，请耐心等待...) ==========")
 
-    log_startup_host_snapshot(logger)
     logger.info(f"Model type: {model_type_arg}, Backend: vLLM (standard)")
-    log_startup_gpu_snapshot(logger)
 
     service_runtime.engine_state.set_phase(
         EnginePhase.LOADING_PROCESSOR,

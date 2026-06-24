@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Pengshen Zhang
 """Inference Config: YAML 热配置加载与校验。
 
-- Pydantic models: 校验 prompt、sampling_params、VAD、history_rollback 等配置
+- Pydantic models: 校验 user_prompt、sampling_params、VAD、history_rollback 等配置
 - InferenceConfigCache: 按 mtime/hash 缓存并热加载 inference_config.yaml
 - ServerConfig: 合并启动参数和热配置，提供推理循环读取入口
 - 只处理配置解析，不直接修改 session 或 engine 状态
@@ -69,7 +69,11 @@ class InferenceConfig(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     log_level: str = "INFO"
-    prompt: str = "请转录这段音频。"
+    system_prompt: str = ""
+    user_prompt: str = ""
+    context: str = ""
+    language: str = "Chinese"
+    itn_enabled: bool = False
     chunk_ms: int = Field(default=1000, gt=0)
     sampling_params: SamplingParamsConfig = Field(
         default_factory=SamplingParamsConfig)
@@ -106,9 +110,6 @@ class StartupConfig(BaseModel):
     model: str = "qwen3-omni"
     model_type: str = "qwen3-omni"
     host: str = "0.0.0.0"
-    port: int = Field(default=8001, gt=0)
-    gpu_ids: str = "0"
-    tensor_parallel_size: int = Field(default=1, gt=0)
     gpu_memory_utilization: float = Field(default=0.75, gt=0.0, le=1.0)
     save_audio: bool = False
     audio_save_dir: str = "saved_audios"

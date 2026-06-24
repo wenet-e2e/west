@@ -8,8 +8,10 @@
 import json
 import logging
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from engine.runtime import ServiceRuntime
+from model.transcript_postprocess import warmup_inverse_normalizer
 from websockets.datastructures import Headers as WsHeaders
 from websockets.http11 import Response as WsResponse
 
@@ -33,15 +35,30 @@ async def health_request_handler(
       返回 None        -> 继续走 WebSocket 升级握手
       返回 WsResponse  -> 直接作为 HTTP 响应发回，跳过升级
     """
-    path = request.path
+    parsed_url = urlsplit(request.path)
+    path = parsed_url.path
+    query = parse_qs(parsed_url.query)
 
     if path == "/health":
+        if query.get("itn_warmup", ["0"])[0].lower() in (
+                "1", "true", "yes"):
+            cfg = service_runtime.inference_cfg.load()
+            available, lang, error = warmup_inverse_normalizer(cfg.language)
+            service_runtime.settings.itn_available = available
+            service_runtime.settings.itn_lang = lang
+            service_runtime.settings.itn_error = error
+
         body = json.dumps({
             "ready": service_runtime.engine_state.ready,
             "phase": service_runtime.engine_state.phase.value,
             "message": service_runtime.engine_state.message,
             "error": service_runtime.engine_state.error,
             "stage": service_runtime.engine_state.message,
+            "itn": {
+                "available": service_runtime.settings.itn_available,
+                "lang": service_runtime.settings.itn_lang,
+                "error": service_runtime.settings.itn_error,
+            },
         }).encode()
         return WsResponse(
             status_code=200,

@@ -183,6 +183,10 @@
     .session-block.active .session-block-header::before {
       background: var(--accent);
     }
+    .session-block-header .lang-tag {
+      margin-left: auto;
+      color: var(--text-secondary);
+    }
     .turn-line {
       padding: 2px 0;
       white-space: pre-wrap;
@@ -235,6 +239,12 @@
     }
     .log-type-send { color: var(--text-display); font-weight: 700; }
     .log-type-recv { color: var(--success); font-weight: 700; }
+    .log-expand {
+      cursor: pointer;
+      color: var(--text-secondary);
+      user-select: none;
+    }
+    .log-expand:hover { color: var(--text-display); }
 
     /* 顶部操作条 — 按钮 + 内联参数 */
     .toolbar {
@@ -297,6 +307,32 @@
     .toolbar-param input:focus,
     .toolbar-param select:focus {
       border-bottom-color: var(--text-primary);
+    }
+    .toolbar-param input:disabled,
+    .toolbar-param select:disabled,
+    .config-row input:disabled,
+    .config-row select:disabled {
+      background: transparent;
+      opacity: 1;
+    }
+    .toolbar-param input:disabled:not(:placeholder-shown),
+    .toolbar-param select:disabled,
+    .config-row input:disabled:not(:placeholder-shown),
+    .config-row select:disabled {
+      color: var(--text-display);
+      -webkit-text-fill-color: var(--text-display);
+    }
+    .toolbar-param input:disabled::placeholder,
+    .config-row input:disabled::placeholder {
+      color: var(--text-disabled);
+      opacity: 1;
+      -webkit-text-fill-color: var(--text-disabled);
+    }
+    .toolbar-param input:-webkit-autofill,
+    .config-row input:-webkit-autofill {
+      box-shadow: 0 0 0 1000px transparent inset;
+      -webkit-text-fill-color: var(--text-display);
+      transition: background-color 9999s ease-out;
     }
 
     .toolbar-gear {
@@ -392,7 +428,7 @@
       display: none;
       padding: var(--space-sm) var(--space-lg);
       border-bottom: 1px solid var(--border-visible);
-      background: var(--surface);
+      background: var(--black);
     }
     .config-panel.open { display: block; }
 
@@ -546,6 +582,7 @@
       font-size: 13px;
       color: var(--text-secondary);
       line-height: 1.5;
+      white-space: pre-wrap;
     }
 
     /* 滚动条美化 */
@@ -651,8 +688,8 @@
           <div class="toolbar-param">
             <label>TURN</label>
             <select id="cfg_turn_detection">
-              <option value="none">none</option>
-              <option value="server_vad" selected>vad</option>
+              <option value="none" selected>none</option>
+              <option value="server_vad">vad</option>
             </select>
           </div>
           <div class="toolbar-gear" id="config_toggle">+</div>
@@ -669,8 +706,31 @@
           <span class="server-status-dot" id="server_status_dot"></span>
         </div>
         <div class="config-row">
-          <label>PROMPT</label>
-          <input type="text" id="cfg_prompt" value="请用中文转录这段音频。" placeholder="请用中文转录这段音频。">
+          <label>MIC</label>
+          <select id="cfg_mic_device">
+            <option value="">System default</option>
+          </select>
+        </div>
+        <div class="config-row">
+          <label>USER PROMPT</label>
+          <input type="text" id="cfg_user_prompt" value="" placeholder="将这段语音转录为纯文本">
+        </div>
+        <div class="config-row">
+          <label>CONTEXT</label>
+          <input type="text" id="cfg_context" value="" placeholder="上下文/热词，可为空">
+        </div>
+        <div class="config-row">
+          <label>LANG</label>
+          <input type="text" id="cfg_language" value="" placeholder="自动检测（或输入 Chinese/English）">
+        </div>
+        <div class="config-row">
+          <label>ITN</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="cfg_itn_enabled">
+            <span class="slider"></span>
+          </label>
+          <span style="color:var(--text-disabled);font-size:11px;font-family:'Space Mono',monospace;letter-spacing:0.04em;margin-left:8px">书面化</span>
+          <span id="cfg_itn_status" style="color:var(--text-disabled);font-size:11px;font-family:'Space Mono',monospace;letter-spacing:0.04em;margin-left:8px">auto</span>
         </div>
         <div class="config-row">
           <label>MODE</label>
@@ -856,14 +916,24 @@
     const cfg_custom_host = document.getElementById('cfg_custom_host');
     const cfg_auto_server_button = document.getElementById('cfg_auto_server_button');
     const server_status_dot = document.getElementById('server_status_dot');
+    const cfg_mic_device = document.getElementById('cfg_mic_device');
     const cfg_chunk_ms = document.getElementById('cfg_chunk_ms');
-    const cfg_prompt = document.getElementById('cfg_prompt');
+    const cfg_user_prompt = document.getElementById('cfg_user_prompt');
+    const cfg_context = document.getElementById('cfg_context');
+    const cfg_language = document.getElementById('cfg_language');
+    const cfg_itn_enabled = document.getElementById('cfg_itn_enabled');
+    const cfg_itn_status = document.getElementById('cfg_itn_status');
     const cfg_use_history = document.getElementById('cfg_use_history');
     const cfg_history_label = document.getElementById('cfg_history_label');
     const cfg_history_rollback_strategy = document.getElementById('cfg_history_rollback_strategy');
     const cfg_history_rollback_value = document.getElementById('cfg_history_rollback_value');
     const cfg_turn_detection = document.getElementById('cfg_turn_detection');
     const td_hint = document.getElementById('td_hint');
+    const saved_language = localStorage.getItem('asr_language');
+    if (saved_language !== null) {
+      cfg_language.value = saved_language;
+    }
+    localStorage.removeItem('asr_mic_device_id');
 
     const TD_HINTS = {
       'none': '手动提交：点击 START 收音，点击 STOP 提交。中间按 chunk_ms 触发增量推理。',
@@ -972,6 +1042,133 @@
     });
     cfg_auto_server_button.addEventListener('click', switch_to_auto_server);
 
+    function normalize_default_microphone_label(label) {
+      return (label || '')
+        .replace(/^(default|默认)\s*[-:：]\s*/i, '')
+        .trim();
+    }
+
+    function set_default_microphone_label(label) {
+      const option = cfg_mic_device.querySelector('option[value=""]');
+      if (!option) return;
+      const normalized = normalize_default_microphone_label(label);
+      option.textContent = normalized ? `System default (${normalized})` : 'System default';
+    }
+
+    async function refresh_microphone_devices() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        add_log('ERR', '浏览器不支持 enumerateDevices');
+        return;
+      }
+
+      const previous = cfg_mic_device.value || '';
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const microphones = devices.filter(d => d.kind === 'audioinput');
+
+        cfg_mic_device.innerHTML = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'System default';
+        cfg_mic_device.appendChild(defaultOption);
+
+        const default_microphone = microphones.find(device => device.deviceId === 'default');
+        set_default_microphone_label(default_microphone ? default_microphone.label : '');
+
+        microphones.filter(device => device.deviceId !== 'default').forEach((device, idx) => {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          option.textContent = device.label || `Microphone ${idx + 1}`;
+          cfg_mic_device.appendChild(option);
+        });
+
+        if (previous && microphones.some(d => d.deviceId === previous)) {
+          cfg_mic_device.value = previous;
+        } else {
+          cfg_mic_device.value = '';
+        }
+        add_log('SYS', `麦克风设备: ${microphones.length} 个`);
+      } catch (err) {
+        add_log('ERR', '枚举麦克风失败', err.message);
+      }
+    }
+
+    cfg_mic_device.addEventListener('change', () => {
+      const selected = cfg_mic_device.options[cfg_mic_device.selectedIndex];
+      add_log('SYS', `选择麦克风: ${selected ? selected.textContent : 'System default'}`);
+    });
+    cfg_language.addEventListener('input', () => {
+      localStorage.setItem('asr_language', cfg_language.value);
+    });
+
+    function set_itn_status(text, color) {
+      cfg_itn_status.textContent = text;
+      cfg_itn_status.style.color = color;
+    }
+
+    function show_itn_unavailable(error) {
+      const errText = error ? String(error) : '';
+      const err = errText ? `: ${errText.slice(0, 32)}` : '';
+      const isMissingModule = errText.includes('No module named');
+      set_itn_status(
+        isMissingModule ? `请安装 WeTextProcessing${err}` : `初始化失败${err}`,
+        'var(--accent)'
+      );
+      show_itn_install_hint(errText);
+    }
+
+    function sync_itn_status_from_info(itn, show_error_banner = true) {
+      if (!cfg_itn_enabled.checked) {
+        set_itn_status('off', 'var(--text-disabled)');
+        return;
+      }
+      if (!itn) {
+        set_itn_status('checking', 'var(--warning)');
+        return;
+      }
+      if (itn.available === false) {
+        if (show_error_banner) {
+          show_itn_unavailable(itn.error || '');
+        } else {
+          const errText = itn.error ? String(itn.error) : '';
+          const err = errText ? `: ${errText.slice(0, 32)}` : '';
+          set_itn_status(`初始化失败${err}`, 'var(--accent)');
+        }
+        return;
+      }
+      set_itn_status('ready', 'var(--success)');
+    }
+
+    async function refresh_itn_status() {
+      if (!cfg_itn_enabled.checked) {
+        sync_itn_status_from_info(null);
+        return;
+      }
+      set_itn_status('checking', 'var(--warning)');
+      try {
+        const url = new URL(server_health_url);
+        url.searchParams.set('itn_warmup', '1');
+        const resp = await fetch(url.toString(), { cache: 'no-store' });
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        sync_itn_status_from_info(data.itn, true);
+      } catch (err) {
+        set_itn_status('unknown', 'var(--warning)');
+        add_log('SYS', `ITN 状态检查失败: ${err.message}`);
+      }
+    }
+
+    cfg_itn_enabled.addEventListener('change', () => {
+      if (!cfg_itn_enabled.checked) {
+        set_itn_status('off', 'var(--text-disabled)');
+        return;
+      }
+      refresh_itn_status();
+    });
+    sync_itn_status_from_info(null);
+
     // 检查服务器健康状态
     async function check_server_health() {
       if (is_microphone_working) {
@@ -1000,6 +1197,9 @@
             server_status_dot.className = 'server-status-dot checking';
             add_log('SYS', `服务器加载中: ${data.stage || '...'}`);
           }
+          if (cfg_itn_enabled.checked && data.itn) {
+            sync_itn_status_from_info(data.itn, false);
+          }
         } else {
           server_status_dot.className = 'server-status-dot offline';
           add_log('SYS', `服务器响应异常: ${resp.status} (${server_health_url})`);
@@ -1016,6 +1216,7 @@
 
     // 页面加载时检查服务器状态
     check_server_health();
+    refresh_microphone_devices();
     // 每 30 秒自动检查一次（仅在未录音时）
     setInterval(() => {
       if (!is_microphone_working) {
@@ -1044,9 +1245,10 @@
 
     // 识别进行中锁定/解锁推理配置
     function set_config_locked(locked) {
-      const els = [cfg_chunk_ms, cfg_prompt, cfg_use_history,
+      const els = [cfg_chunk_ms, cfg_user_prompt, cfg_context, cfg_language,
+                   cfg_itn_enabled, cfg_use_history,
                    cfg_history_rollback_strategy, cfg_history_rollback_value, cfg_turn_detection,
-                   cfg_server_preset, cfg_custom_host];
+                   cfg_server_preset, cfg_custom_host, cfg_mic_device];
       els.forEach(el => { el.disabled = locked; });
       ui_config_toggle.style.pointerEvents = locked ? 'none' : '';
       ui_config_toggle.style.opacity      = locked ? '0.4' : '';
@@ -1056,10 +1258,19 @@
       const session_cfg = {};
       const extra = {};
 
-      const prompt_val = cfg_prompt.value.trim();
-      if (prompt_val) {
-        session_cfg.instructions = prompt_val;
+      const user_prompt_val = cfg_user_prompt.value.trim();
+      if (user_prompt_val) {
+        extra.user_prompt = user_prompt_val;
       }
+      const context_val = cfg_context.value.trim();
+      if (context_val) {
+        extra.context = context_val;
+      }
+      const language_val = cfg_language.value.trim();
+      if (language_val) {
+        extra.language = language_val;
+      }
+      extra.itn = { enabled: cfg_itn_enabled.checked };
       const td_val = cfg_turn_detection.value;
       if (td_val) {
         session_cfg.audio = { input: { turn_detection: { type: td_val } } };
@@ -1081,6 +1292,37 @@
         session_cfg.extra = extra;
       }
       return Object.keys(session_cfg).length > 0 ? session_cfg : null;
+    }
+
+    function build_microphone_constraints() {
+      const audio_constraints = {
+        sampleRate: 16000,
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      };
+      const selected_device_id = cfg_mic_device.value;
+      if (selected_device_id) {
+        audio_constraints.deviceId = { exact: selected_device_id };
+      }
+      return { audio: audio_constraints };
+    }
+
+    function log_actual_microphone_track(stream) {
+      const track = stream.getAudioTracks()[0];
+      if (!track) {
+        add_log('ERR', '未获取到音频 track');
+        return;
+      }
+      const settings = track.getSettings ? track.getSettings() : {};
+      const selected = cfg_mic_device.options[cfg_mic_device.selectedIndex];
+      add_log('CFG', `请求麦克风 ${selected ? selected.textContent : 'System default'}`);
+      add_log('CFG', `实际麦克风 ${track.label || '(label unavailable)'}`);
+      add_log('CFG', `实际设置 sr=${settings.sampleRate || '?'} ch=${settings.channelCount || '?'} ec=${settings.echoCancellation ?? '?'} ns=${settings.noiseSuppression ?? '?'} agc=${settings.autoGainControl ?? '?'}`);
+      if (!cfg_mic_device.value && track.label) {
+        set_default_microphone_label(track.label);
+      }
     }
 
     // =========================================
@@ -1107,6 +1349,87 @@
     let last_chunk_id = -1;  // 上一个 chunk_id，用于检测跨 chunk 历史回退（仅伪流式模式生效）
     let current_session_block = null;
 
+    // 语种元数据（第三层级，贴在 session-block-header 右侧）
+    let current_lang_tag = null;     // 当前 header 内的语种标签元素
+    let current_turn_langs = [];     // 本轮已检测到的去重语种短码，按出现顺序
+
+    function short_lang(raw) {
+      const s = (raw || '').trim().toLowerCase();
+      if (!s) return '';
+      if (s.startsWith('chinese') || s.startsWith('zh') || s.startsWith('mandarin')) return 'ZH';
+      if (s.startsWith('english') || s.startsWith('en')) return 'EN';
+      if (s.startsWith('cantonese') || s.startsWith('yue')) return 'YUE';
+      return raw.trim().slice(0, 6).toUpperCase();
+    }
+
+    // 在指定 header 上重建语种标签。header.textContent 被改写后会清空子节点，
+    // 故每次改写后都需重新挂载，并按 current_turn_langs 还原显示。
+    function attach_lang_tag(headerEl) {
+      if (!headerEl) return;
+      current_lang_tag = document.createElement('span');
+      current_lang_tag.className = 'lang-tag';
+      headerEl.appendChild(current_lang_tag);
+      if (current_turn_langs.length) {
+        current_lang_tag.textContent = 'LANG ' + current_turn_langs.join(' · ');
+        current_lang_tag.style.display = '';
+      } else {
+        current_lang_tag.style.display = 'none';
+      }
+    }
+
+    // 记录某段检测到的语种，并刷新 header 右侧标签。
+    function note_detected_language(raw) {
+      const code = short_lang(raw);
+      if (!code) return;
+      if (!current_turn_langs.includes(code)) current_turn_langs.push(code);
+      if (current_lang_tag) {
+        current_lang_tag.textContent = 'LANG ' + current_turn_langs.join(' · ');
+        current_lang_tag.style.display = '';
+      }
+    }
+
+    const TRANSCRIPT_BOUNDARY_PUNCT = new Set('，。,.!?！？、；;：:…·—–');
+    function needsTranscriptBoundarySpace(left, right) {
+      if (!left || !right) return false;
+      if (/\s$/.test(left) || /^\s/.test(right)) return false;
+      const leftCh = left[left.length - 1];
+      const rightCh = right[0];
+      const leftAsciiAlnum = leftCh.charCodeAt(0) < 128 && /[0-9A-Za-z]/.test(leftCh);
+      const rightAsciiAlnum = rightCh.charCodeAt(0) < 128 && /[0-9A-Za-z]/.test(rightCh);
+      if (leftAsciiAlnum && rightAsciiAlnum) return true;
+      if (TRANSCRIPT_BOUNDARY_PUNCT.has(leftCh) && /[A-Za-z]/.test(rightCh)) return true;
+      if (leftCh.charCodeAt(0) > 0x2E80 && rightCh.charCodeAt(0) < 128 && /[A-Za-z]/.test(rightCh)) return true;
+      return false;
+    }
+    function mergeTranscriptBoundary(left, right) {
+      if (!left) return right;
+      if (!right) return left;
+      return needsTranscriptBoundarySpace(left, right) ? `${left} ${right}` : left + right;
+    }
+
+    function isNearScrollBottom(el, threshold = 24) {
+      return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+    }
+
+    function scrollToBottomIfFollowing(el, was_following) {
+      if (was_following) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+
+    // 实时识别区在容器顶部（active_area），历史段在其下方。识别时若把容器
+    // 滚到底部会显示历史、把正在识别的文本挤出视野；故应把活动区顶到可视区
+    // 顶部。仅当用户当前正停留在顶部（未手动下滑看历史）时才自动跟随。
+    function isViewingActiveArea(el, threshold = 24) {
+      return el.scrollTop <= threshold;
+    }
+
+    function scrollActiveAreaToTop(el, was_viewing) {
+      if (was_viewing) {
+        el.scrollTop = 0;
+      }
+    }
+
     // 日志频率控制
     let append_audio_count = 0;
 
@@ -1119,6 +1442,10 @@
     let is_engine_ready = false;
     let is_audio_capturing = false;
     let current_conn_id = 0;  // 每次新建连接自增，用于识别过期消息
+    let vad_turn_done_since_last_speech = false;
+    let last_vad_response_done_ms = 0;
+    let last_vad_speech_started_ms = 0;
+    const VAD_TAIL_SUPPRESS_MS = 500;
 
     // 文件上传模式状态
     let is_file_uploading = false;
@@ -1129,6 +1456,7 @@
 
     // ----- 日志打印工具 -----
     function add_log(type, action, details = "") {
+      const should_follow_log = isNearScrollBottom(ui_log_area);
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
 
@@ -1137,19 +1465,39 @@
 
       let typeClass = type === 'SEND' ? 'log-type-send' : 'log-type-recv';
 
-      let displayDetails = details;
-      if (details.length > 50) {
-        displayDetails = details.substring(0, 50) + '...';
-      }
+      logDiv.innerHTML = `<span class="log-time">${timeStr}</span><span class="${typeClass}">${type}</span> ${action} `;
 
-      logDiv.innerHTML = `<span class="log-time">${timeStr}</span><span class="${typeClass}">${type}</span> ${action} <span style="color:var(--text-disabled)">${displayDetails}</span>`;
+      // details 用 DOM 节点渲染（避免 HTML 注入），超长时 … 可点击展开/收起
+      const detailSpan = document.createElement('span');
+      detailSpan.style.color = 'var(--text-disabled)';
+      const LOG_DETAIL_LIMIT = 50;
+      if (details.length > LOG_DETAIL_LIMIT) {
+        const textNode = document.createTextNode(details.substring(0, LOG_DETAIL_LIMIT));
+        const toggle = document.createElement('span');
+        toggle.className = 'log-expand';
+        toggle.textContent = ' …';
+        toggle.title = '展开';
+        let expanded = false;
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          expanded = !expanded;
+          textNode.textContent = expanded ? details : details.substring(0, LOG_DETAIL_LIMIT);
+          toggle.textContent = expanded ? ' ⤴' : ' …';
+          toggle.title = expanded ? '收起' : '展开';
+        });
+        detailSpan.appendChild(textNode);
+        detailSpan.appendChild(toggle);
+      } else {
+        detailSpan.textContent = details;
+      }
+      logDiv.appendChild(detailSpan);
 
       ui_log_area.appendChild(logDiv);
-      ui_log_area.scrollTop = ui_log_area.scrollHeight;
 
       if (ui_log_area.children.length > 500) {
         ui_log_area.removeChild(ui_log_area.firstChild);
       }
+      scrollToBottomIfFollowing(ui_log_area, should_follow_log);
     }
 
     // ----- UI 状态更新工具 -----
@@ -1183,6 +1531,19 @@
       ui_active_area.appendChild(banner);
     }
 
+    function show_itn_install_hint(error) {
+      const reason = error ? `\n当前错误: ${error}` : '';
+      const isMissingModule = error && String(error).includes('No module named');
+      const title = isMissingModule ? 'ITN 书面化依赖未安装' : 'ITN 书面化初始化失败';
+      const action = isMissingModule
+        ? `\n\n请在启动 ASR 服务的 Python/conda 环境中安装:\npip install WeTextProcessing -i http://pypi.hobot.cc/hobot-local/simple --extra-index-url=http://mirrors.aliyun.com/pypi/simple/ --trusted-host pypi.hobot.cc --trusted-host mirrors.aliyun.com\n\n安装后重启 serve_touch_asr 服务。`
+        : '\n\n请检查服务日志中的 ITN 初始化错误；当前识别会继续使用原始文本。';
+      show_error_in_result_area(
+        title,
+        `当前服务环境无法加载 WeTextProcessing，ITN 书面化已自动降级为原始识别文本。${reason}${action}`
+      );
+    }
+
     // ----- 按钮点击事件 -----
     ui_button.addEventListener('click', async () => {
       if (!is_microphone_working) {
@@ -1213,10 +1574,10 @@
         }
 
         add_log('SYS', '请求麦克风权限...');
-        hardware_microphone_stream = await navigator.mediaDevices.getUserMedia({
-          audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true }
-        });
+        hardware_microphone_stream = await navigator.mediaDevices.getUserMedia(build_microphone_constraints());
         add_log('SYS', '麦克风权限获取成功');
+        log_actual_microphone_track(hardware_microphone_stream);
+        refresh_microphone_devices();
 
         if (!audio_processor_engine || audio_processor_engine.state === 'closed') {
           audio_processor_engine = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TARGET_SAMPLE_RATE });
@@ -1243,6 +1604,9 @@
           has_ever_connected = true;
           is_engine_ready = false;
           is_audio_capturing = false;
+          vad_turn_done_since_last_speech = false;
+          last_vad_response_done_ms = 0;
+          last_vad_speech_started_ms = 0;
           const old_error = document.getElementById('error_banner');
           if (old_error) old_error.remove();
 
@@ -1255,7 +1619,10 @@
           // 打印所有前端配置
           add_log('CFG', `服务器 ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})`);
           add_log('CFG', `分块间隔 ${cfg_chunk_ms.value} 毫秒`);
-          add_log('CFG', cfg_prompt.value ? `提示词「${cfg_prompt.value}」` : '未设置提示词');
+          add_log('CFG', cfg_user_prompt.value ? `用户提示词「${cfg_user_prompt.value}」` : '未设置用户提示词');
+          add_log('CFG', cfg_context.value ? `上下文「${cfg_context.value}」` : '未设置上下文');
+          add_log('CFG', cfg_language.value ? `强制语种 ${cfg_language.value}` : '未设置强制语种');
+          add_log('CFG', cfg_itn_enabled.checked ? 'ITN 书面化已启用' : 'ITN 书面化未启用');
           add_log('CFG', cfg_use_history.checked ? '伪流式（使用历史上下文，支持回退）' : '非流式（不使用历史上下文）');
           const rb = cfg_history_rollback_strategy.value;
           const rv = cfg_history_rollback_value.value;
@@ -1335,9 +1702,23 @@
     function stop_microphone_and_finish_turn() {
       stop_waveform_animation();
 
-      if (server_connection && server_connection.readyState === WebSocket.OPEN) {
+      const skip_commit_after_vad_done = (
+        cfg_turn_detection.value === 'server_vad'
+        && (
+          vad_turn_done_since_last_speech
+          || (
+            last_vad_response_done_ms > 0
+            && last_vad_speech_started_ms > last_vad_response_done_ms
+            && Date.now() - last_vad_speech_started_ms < VAD_TAIL_SUPPRESS_MS
+          )
+        )
+      );
+
+      if (server_connection && server_connection.readyState === WebSocket.OPEN && !skip_commit_after_vad_done) {
         add_log('SEND', 'input_audio_buffer.commit');
         server_connection.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+      } else if (skip_commit_after_vad_done) {
+        add_log('SYS', 'VAD 已完成当前轮，STOP 不再重复 commit');
       }
 
       const conn_to_close = server_connection;
@@ -1357,7 +1738,6 @@
         };
 
         const original_onmessage = conn_to_close.onmessage;
-        let received_final_response = false;
 
         conn_to_close.onmessage = (event) => {
           if (current_conn_id !== closing_conn_id) return;
@@ -1368,16 +1748,14 @@
 
           try {
             const data = JSON.parse(event.data);
-            if (data.type === 'response.done' ||
-                data.type === 'conversation.item.input_audio_transcription.completed') {
-              received_final_response = true;
+            if (data.type === 'response.done') {
               setTimeout(() => {
                 if (!connection_closed && conn_to_close.readyState === WebSocket.OPEN) {
                   connection_closed = true;
                   conn_to_close.onmessage = null;
                   try {
                     conn_to_close.close(1000, 'Normal closure');
-                    add_log('SYS', '收到最终响应，关闭连接');
+                    add_log('SYS', '收到 response.done，关闭连接');
                   } catch (e) {}
                 }
               }, 100);
@@ -1385,16 +1763,18 @@
           } catch (e) {}
         };
 
-        setTimeout(() => {
-          if (!connection_closed && conn_to_close.readyState === WebSocket.OPEN) {
-            connection_closed = true;
-            conn_to_close.onmessage = null;
-            try {
-              conn_to_close.close(1000, 'Timeout closure');
-              add_log('SYS', '超时未收到响应，关闭连接');
-            } catch (e) {}
-          }
-        }, 1500);
+        if (skip_commit_after_vad_done) {
+          setTimeout(() => {
+            if (!connection_closed && conn_to_close.readyState === WebSocket.OPEN) {
+              connection_closed = true;
+              conn_to_close.onmessage = null;
+              try {
+                conn_to_close.close(1000, 'VAD turn already done');
+                add_log('SYS', 'VAD 已完成，关闭连接');
+              } catch (e) {}
+            }
+          }, 100);
+        }
 
         const check_interval = setInterval(() => {
           if (current_conn_id !== closing_conn_id) {
@@ -1468,12 +1848,16 @@
       const header = document.createElement('div');
       header.className = 'session-block-header';
       header.textContent = `${ts}  ${current_session_id || '#' + session_counter}`;
+      current_turn_langs = [];
+      attach_lang_tag(header);
       current_session_block.appendChild(header);
 
       // 放入 active_area（顶部区域）
       ui_active_area.innerHTML = '';
       ui_active_area.appendChild(current_session_block);
       ui_active_area.appendChild(ui_cursor);
+      // 新一段开始：把视图顶到活动区，避免被上一段遗留的滚动位置遮挡
+      ui_text_box.scrollTop = 0;
 
       // 创建本次 session 的唯一一个 turn-line，整个 session 只有一段
       current_turn_text = "";
@@ -1492,6 +1876,27 @@
       }
     }
 
+    function syncSessionConfigFromServer(sess) {
+      const extra = sess.extra || {};
+      if (extra.user_prompt && !cfg_user_prompt.value.trim()) {
+        cfg_user_prompt.value = extra.user_prompt;
+      }
+      if (extra.context && !cfg_context.value.trim()) {
+        cfg_context.value = extra.context;
+      }
+      if (extra.language && !cfg_language.value.trim()) {
+        cfg_language.value = extra.language;
+      }
+      const itn = extra.itn || {};
+      if (itn.enabled !== undefined) {
+        cfg_itn_enabled.checked = Boolean(itn.enabled);
+      }
+      sync_itn_status_from_info(itn, true);
+      if (extra.chunk_ms && !cfg_chunk_ms.value) {
+        cfg_chunk_ms.value = extra.chunk_ms;
+      }
+    }
+
     // ----- 底层：接收服务器发来的文字 -----
     function on_receive_message_from_server(event) {
       const server_data = JSON.parse(event.data);
@@ -1503,7 +1908,8 @@
         const extra = sess.extra || {};
         const td = sess.audio?.input?.turn_detection || {};
 
-        const summary = `td=${td.type || '?'} chunk=${extra.chunk_ms || '?'} history=${extra.use_history ?? '?'} history_rollback=${extra.history_rollback?.strategy || 'none'}/${extra.history_rollback?.value || 0}`;
+        const itnSummary = extra.itn?.available === false ? 'itn=unavailable' : `itn=${extra.itn?.enabled ? 'on' : 'off'}`;
+        const summary = `td=${td.type || '?'} chunk=${extra.chunk_ms || '?'} history=${extra.use_history ?? '?'} ${itnSummary} history_rollback=${extra.history_rollback?.strategy || 'none'}/${extra.history_rollback?.value || 0}`;
         add_log('RECV', 'session.created', `${sid} ${summary}`);
 
         // 更新 session block header，用服务器分配的 session ID
@@ -1513,20 +1919,14 @@
             const now = new Date();
             const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
             header.textContent = `${ts}  ${sid}`;
+            attach_lang_tag(header);
           }
-        }
-
-        if (sess.instructions && !cfg_prompt.value.trim()) {
-          cfg_prompt.value = sess.instructions;
-        }
-        if (extra.chunk_ms && !cfg_chunk_ms.value) {
-          cfg_chunk_ms.value = extra.chunk_ms;
         }
 
         const sess_update = build_session_update_payload();
         if (sess_update && server_connection && server_connection.readyState === WebSocket.OPEN) {
           server_connection.send(JSON.stringify({ type: 'session.update', session: sess_update }));
-          add_log('SEND', 'session.update', JSON.stringify(sess_update).slice(0, 60));
+          add_log('SEND', 'session.update', JSON.stringify(sess_update));
         }
 
         setTimeout(() => {
@@ -1534,6 +1934,15 @@
             activate_audio_capture();
           }
         }, 200);
+        return;
+      }
+
+      if (server_data.type === 'session.updated') {
+        const sess = server_data.session || {};
+        const extra = sess.extra || {};
+        syncSessionConfigFromServer(sess);
+        const itnSummary = extra.itn?.available === false ? 'itn=unavailable' : `itn=${extra.itn?.enabled ? 'on' : 'off'}`;
+        add_log('RECV', 'session.updated', itnSummary);
         return;
       }
 
@@ -1552,6 +1961,10 @@
 
       if (server_data.type === 'input_audio_buffer.speech_started') {
         const ms = server_data.audio_start_ms || 0;
+        last_vad_speech_started_ms = Date.now();
+        if (last_vad_response_done_ms === 0 || last_vad_speech_started_ms - last_vad_response_done_ms >= VAD_TAIL_SUPPRESS_MS) {
+          vad_turn_done_since_last_speech = false;
+        }
         add_log('RECV', 'speech_started', `${ms}ms`);
         update_ui_status('active', `SPEECH DETECTED (${ms}ms)`);
         return;
@@ -1570,6 +1983,7 @@
       }
 
       if (server_data.type === 'conversation.item.input_audio_transcription.delta') {
+        const should_follow_transcript = isViewingActiveArea(ui_text_box);
         const cursor = server_data.cursor !== undefined ? server_data.cursor : 0;
         const delta = server_data.delta || "";
         const cid = server_data.chunk_id !== undefined ? server_data.chunk_id : -1;
@@ -1580,29 +1994,56 @@
         const is_history_rollback = (cid >= 0 && cid !== last_chunk_id && cursor < current_seg_len);
         last_chunk_id = cid;
 
-        if (cursor === 0 && current_turn_text.length > 0) {
-          // cursor 归零说明新语音段开始，delta 拼在已累积文字后面
-          current_turn_text = current_turn_text.slice(0, turn_base_len) + delta;
+        if (!delta) {
+          // 协议语义：空 delta 只表示状态确认；只有 rollback 才允许截断显示文本。
+          if (is_history_rollback) {
+            current_turn_text = current_turn_text.slice(0, turn_base_len + cursor);
+          }
+        } else if (cursor === 0 && turn_base_len > 0) {
+          // 新语音段从 cursor=0 开始，接在上一段 completed 后的展示文本后面。
+          const prefix = current_turn_text.slice(0, turn_base_len);
+          current_turn_text = mergeTranscriptBoundary(prefix, delta);
         } else {
           // 同一段内的正常流式 delta（含 chunk 内 history_rollback）
           current_turn_text = current_turn_text.slice(0, turn_base_len + cursor) + delta;
         }
 
+        note_detected_language(server_data.language);
+        const langLabel = server_data.language ? ` lang=${server_data.language}` : '';
         if (is_history_rollback) {
-          add_log('RECV', `delta${cidLabel} (history_rollback)`, `cursor=${cursor} ctext="${current_turn_text}"`);
+          add_log('RECV', `delta${cidLabel} (history_rollback)`, `cursor=${cursor} ctext="${current_turn_text}"${langLabel}`);
         } else {
-          add_log('RECV', `delta${cidLabel}`, `cursor=${cursor} ctext="${current_turn_text}"`);
+          add_log('RECV', `delta${cidLabel}`, `cursor=${cursor} ctext="${current_turn_text}"${langLabel}`);
         }
         current_turn_node.textContent = current_turn_text;
-        ui_text_box.scrollTop = ui_text_box.scrollHeight;
+        scrollActiveAreaToTop(ui_text_box, should_follow_transcript);
       }
       else if (server_data.type === 'conversation.item.input_audio_transcription.completed') {
-        add_log('RECV', 'transcription.completed', server_data.transcript || '');
+        const should_follow_transcript = isViewingActiveArea(ui_text_box);
+        const segTranscript = server_data.transcript || '';
+        note_detected_language(server_data.language);
+        const completedLang = server_data.language ? ` [lang=${server_data.language}]` : '';
+        add_log('RECV', 'transcription.completed', `${segTranscript}${completedLang}`);
+        if (segTranscript) {
+          const prefix = current_turn_text.slice(0, turn_base_len);
+          current_turn_text = mergeTranscriptBoundary(prefix, segTranscript);
+          current_turn_node.textContent = current_turn_text;
+          scrollActiveAreaToTop(ui_text_box, should_follow_transcript);
+        }
         // 记录当前段完成后的累积长度，下一段的 delta 会从这个位置之后追加
         turn_base_len = current_turn_text.length;
         if (is_microphone_working) {
           update_ui_status('active', 'RECORDING');
         }
+      } else if (server_data.type === 'response.done') {
+        if (cfg_turn_detection.value === 'server_vad') {
+          vad_turn_done_since_last_speech = true;
+          last_vad_response_done_ms = Date.now();
+        }
+        // 一轮结束：清空本轮语种累积，下一轮 delta 会重新填充，
+        // 标签文本暂时保留，待新语种到达再覆盖，避免闪空。
+        current_turn_langs = [];
+        add_log('RECV', server_data.type, "");
       } else {
         add_log('RECV', server_data.type, "");
       }
@@ -1881,13 +2322,16 @@
               const sess_update = build_session_update_payload();
               if (sess_update) {
                 ws.send(JSON.stringify({ type: 'session.update', session: sess_update }));
-                add_log('SEND', 'session.update', JSON.stringify(sess_update).slice(0, 60));
+                add_log('SEND', 'session.update', JSON.stringify(sess_update));
               }
 
               // 打印所有前端配置（同麦克风连接）
               add_log('CFG', `服务器 ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})`);
               add_log('CFG', `分块间隔 ${cfg_chunk_ms.value} 毫秒`);
-              add_log('CFG', cfg_prompt.value ? `提示词「${cfg_prompt.value}」` : '未设置提示词');
+              add_log('CFG', cfg_user_prompt.value ? `用户提示词「${cfg_user_prompt.value}」` : '未设置用户提示词');
+              add_log('CFG', cfg_context.value ? `上下文「${cfg_context.value}」` : '未设置上下文');
+              add_log('CFG', cfg_language.value ? `强制语种 ${cfg_language.value}` : '未设置强制语种');
+              add_log('CFG', cfg_itn_enabled.checked ? 'ITN 书面化已启用' : 'ITN 书面化未启用');
               add_log('CFG', cfg_use_history.checked ? '伪流式（使用历史上下文，支持回退）' : '非流式（不使用历史上下文）');
               const rb = cfg_history_rollback_strategy.value;
               const rv = cfg_history_rollback_value.value;
@@ -1920,6 +2364,8 @@
         const now = new Date();
         const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
         file_header.innerHTML = `${fname} <span style="color:var(--text-disabled);margin-left:8px">${duration_sec.toFixed(1)}s</span> ${file_session_id || '#' + session_counter}`;
+        current_turn_langs = [];
+        attach_lang_tag(file_header);
         file_block.appendChild(file_header);
 
         ui_active_area.innerHTML = '';
@@ -1944,14 +2390,17 @@
               const delta = data.delta || "";
               current_turn_text = current_turn_text.slice(0, cursor) + delta;
               if (current_turn_node) current_turn_node.textContent = current_turn_text;
+              note_detected_language(data.language);
               ui_active_area.scrollIntoView({ block: 'end' });
             } else if (data.type === 'conversation.item.input_audio_transcription.completed') {
               if (data.transcript !== undefined && current_turn_node) {
                 current_turn_text = data.transcript;
                 current_turn_node.textContent = current_turn_text;
               }
+              note_detected_language(data.language);
               file_final_transcript = data.transcript || current_turn_text;
-              add_log('RECV', 'completed', `"${file_final_transcript.slice(0, 60)}"`);
+              const completedLang = data.language ? ` [lang=${data.language}]` : '';
+              add_log('RECV', 'completed', `"${file_final_transcript.slice(0, 60)}"${completedLang}`);
             } else if (data.type === 'response.done') {
               resolve();
             }

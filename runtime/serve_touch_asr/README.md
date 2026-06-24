@@ -128,7 +128,7 @@ examples/qwen3asr/conf/inference_config.yaml
 
 | 路径 | 说明 |
 |------|------|
-| `examples/qwen3asr/conf/inference_config.yaml` | 推理配置，包含 prompt、chunk、VAD、history rollback 等 |
+| `examples/qwen3asr/conf/inference_config.yaml` | 推理配置，包含 user_prompt、system_prompt、context、language、chunk、VAD、history rollback 等 |
 | `examples/qwen3asr/start_server.sh` | 标准启动脚本 |
 | `examples/qwen3asr/start_server.local.sh` | 本地个人启动脚本 |
 
@@ -160,7 +160,7 @@ https://host:port/
 - 麦克风实时识别
 - 音频文件上传识别
 - `AUTO` / `CUSTOM` 服务地址切换
-- `chunk_ms`、prompt、VAD、history rollback 配置
+- `chunk_ms`、user_prompt、context、language、VAD、history rollback 配置
 - event log 和健康检查状态展示
 
 CUSTOM 填写 `ws://host:port` 或 `wss://host:port`，前端会自动补齐 `/v1/realtime` 和 `/health`。
@@ -220,7 +220,7 @@ Qwen3-ASR 1.7B 的识别效果如下。表中 `N/C/S/D/I` 分别为总字数、�
 {
   "type": "session.update",
   "session": {
-    "instructions": "请用中文转录这段音频。",
+    "instructions": "你是一个语音转写助手。",
     "audio": {
       "input": {
         "turn_detection": {"type": "server_vad"}
@@ -228,6 +228,7 @@ Qwen3-ASR 1.7B 的识别效果如下。表中 `N/C/S/D/I` 分别为总字数、�
     },
     "extra": {
       "chunk_ms": 1000,
+      "user_prompt": "将这段语音转录为纯文本",
       "use_history": true,
       "history_rollback": {
         "enabled": true,
@@ -239,18 +240,59 @@ Qwen3-ASR 1.7B 的识别效果如下。表中 `N/C/S/D/I` 分别为总字数、�
 }
 ```
 
+> `instructions`：**系统提示（system message）**，对齐 OpenAI Realtime 语义，进入 `session.asr.system_prompt`。
+> `extra.user_prompt`：当前任务指令（user 角色），进入 `session.asr.user_prompt`。
+> 二者仅 Qwen3-Omni 生效；Qwen3-ASR 忽略 system/user prompt，使用固定模板。
+
 服务端返回：
 
-- `session.created`
-- `session.updated`
-- `conversation.item.input_audio_transcription.delta`
-- `conversation.item.input_audio_transcription.completed`
-- `response.done`
-- `input_audio_buffer.speech_started`（`server_vad`）
-- `input_audio_buffer.speech_stopped`（`server_vad`）
-- `input_audio_buffer.committed`（`server_vad`）
+| 事件 | 触发时机 |
+|------|----------|
+| `session.created` | 连接建立，返回配置快照 |
+| `session.updated` | `session.update` 后返回最新配置快照 |
+| `conversation.item.input_audio_transcription.delta` | 增量转录，cursor 覆盖协议 |
+| `conversation.item.input_audio_transcription.completed` | 本轮转录完成 |
+| `response.done` | 响应结束标志，跟在 `completed` 之后 |
+| `input_audio_buffer.speech_started` | `server_vad` 检测到语音起始 |
+| `input_audio_buffer.speech_stopped` | `server_vad` 检测到语音结束 |
+| `input_audio_buffer.committed` | `server_vad` auto-commit 确认 |
 
-`delta` 事件使用 cursor 覆盖协议：
+#### `session.created` / `session.updated`
+
+`extra` 携带运行时配置快照，其中包含**强制语种**和 **ITN 预热状态**：
+
+```json
+{
+  "type": "session.created",
+  "session": {
+    "id": "sess_<uuid>",
+    "object": "realtime.session",
+    "model": "qwen3-asr",
+    "instructions": "你是一个语音转写助手。",
+    "audio": {"input": {"format": {"type": "audio/pcm", "rate": 16000}, "turn_detection": {"type": "server_vad"}}},
+    "extra": {
+      "chunk_ms": 1000,
+      "user_prompt": "将这段语音转录为纯文本",
+      "context": "",
+      "language": "",
+      "itn": {"enabled": true, "available": true, "error": ""},
+      "use_history": true,
+      "history_rollback": {"enabled": true, "strategy": "words", "value": 1}
+    }
+  }
+}
+```
+
+> `instructions`：系统提示，回填 `session.asr.system_prompt`（与 `extra.user_prompt` 区分；不再有 `extra.system_prompt` 字段）。
+> `language`：强制语种，空表示自动检测。
+> `itn.enabled`：**是否想用**（会话级书面化开关）。
+> `itn.available` / `itn.error`：**是否可用**及不可用原因，为**进程级 ITN 预热诊断**（启动 / 配置 reload 时写入），不可用时 `error` 供前端给出安装提示。注意它**不代表识别语种**，本轮真实识别语种见下方 `delta` / `completed` 的 `language` 字段。
+
+> 客户端 `session.update` 只需回传 `extra.itn.enabled`，`available` / `error` 由服务端单向下发。
+
+#### `conversation.item.input_audio_transcription.delta`
+
+增量转录，使用 cursor 覆盖协议。前端处理方式：`text = text.slice(0, cursor) + delta`
 
 ```json
 {
@@ -258,14 +300,33 @@ Qwen3-ASR 1.7B 的识别效果如下。表中 `N/C/S/D/I` 分别为总字数、�
   "cursor": 5,
   "delta": "今天天气",
   "is_final": false,
-  "chunk_id": 3
+  "chunk_id": 3,
+  "language": "Chinese"
 }
 ```
 
-前端处理方式：
+> `cursor`：本轮已确认文本的字符长度（截断点）。
+> `language`：本轮模型实际检测 / 解析出的语种（自动检测时随说话内容变化）。
 
-```text
-text = text.slice(0, cursor) + delta
+#### `conversation.item.input_audio_transcription.completed`
+
+本轮转录完成，`transcript` 为最终文本，`language` 为本轮识别语种。
+
+```json
+{
+  "type": "conversation.item.input_audio_transcription.completed",
+  "transcript": "今天天气真不错。",
+  "language": "Chinese"
+}
+```
+
+#### `response.done` / `input_audio_buffer.*`
+
+```json
+{"type": "response.done"}
+{"type": "input_audio_buffer.speech_started", "audio_start_ms": 320, "item_id": "sess_<uuid>_item_1"}
+{"type": "input_audio_buffer.speech_stopped", "audio_end_ms": 1840, "item_id": "sess_<uuid>_item_1"}
+{"type": "input_audio_buffer.committed", "item_id": "sess_<uuid>_item_1"}
 ```
 
 ---

@@ -3,7 +3,7 @@
 
 - RealtimeASRClient: 读取音频、切包、发送 input_audio_buffer.append/commit
 - transcribe_one/transcribe_batch: 支持单文件、列表文件和 JSONL 输出
-- CLI 参数覆盖 streaming、chunk_ms、prompt、history_rollback 等 session 配置
+- CLI 参数覆盖 streaming、chunk_ms、user_prompt、history_rollback 等 session 配置
 - 用于本地调试、延迟评测和批量识别脚本
 """
 
@@ -123,7 +123,12 @@ class RealtimeASRClient:
             False - 尽快发完所有 packet
         history_rollback:    回退策略配置 dict (传给 session.update)
         chunk_ms:    服务端推理 chunk 触发阈值 (毫秒), None=使用服务端默认值
-        prompt:      ASR prompt, None=使用服务端默认值
+        system_prompt: Qwen3-Omni system prompt（映射到协议 instructions），
+            None=使用服务端默认值
+        user_prompt: Qwen3-Omni 当前任务指令（映射到 extra.user_prompt），
+            None=使用服务端默认值
+        context:     ASR 上下文/热词, None=使用服务端默认值
+        language:    Qwen3-ASR 强制语种, None=使用服务端默认值
         use_history: 是否使用历史文本拼接 (默认 True)
     """
     def __init__(
@@ -134,7 +139,10 @@ class RealtimeASRClient:
         simulate_streaming: bool = True,
         history_rollback: Optional[Dict[str, Any]] = None,
         chunk_ms: Optional[int] = None,
-        prompt: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+        context: Optional[str] = None,
+        language: Optional[str] = None,
         use_history: bool = True,
         record_deltas: bool = False,
     ):
@@ -145,7 +153,10 @@ class RealtimeASRClient:
         self.simulate_streaming = simulate_streaming
         self.history_rollback = history_rollback
         self.chunk_ms = chunk_ms
-        self.prompt = prompt
+        self.system_prompt = system_prompt
+        self.user_prompt = user_prompt
+        self.context = context
+        self.language = language
         self.use_history = use_history
         self.record_deltas = record_deltas
 
@@ -201,8 +212,15 @@ class RealtimeASRClient:
             extra["chunk_ms"] = self.chunk_ms
         if not self.use_history:
             extra["use_history"] = False
-        if self.prompt is not None:
-            session_cfg["instructions"] = self.prompt
+        if self.user_prompt is not None:
+            extra["user_prompt"] = self.user_prompt
+        if self.system_prompt is not None:
+            # instructions = 系统提示（对齐 OpenAI 语义）
+            session_cfg["instructions"] = self.system_prompt
+        if self.context is not None:
+            extra["context"] = self.context
+        if self.language is not None:
+            extra["language"] = self.language
         if extra:
             session_cfg["extra"] = extra
 
@@ -599,8 +617,8 @@ Examples:
   # 覆盖服务端 chunk_ms（减少推理次数，提高吞吐）
   python client.py -i wav_list.txt --chunk-ms 3000
 
-  # 自定义 prompt
-  python client.py -i test.wav --prompt "Transcribe the English audio."
+  # 自定义 user prompt
+  python client.py -i test.wav --user-prompt "Transcribe the English audio."
 
   # 使用历史文本拼接
   python client.py -i test.wav --use-history
@@ -647,10 +665,22 @@ Examples:
                              type=int,
                              default=None,
                              help='推理 chunk 阈值 ms（默认服务端配置）')
-    infer_group.add_argument('--prompt',
+    infer_group.add_argument('--user-prompt',
                              type=str,
                              default=None,
-                             help='ASR prompt (default: 使用服务端配置)')
+                             help='Qwen3-Omni 当前任务指令 (默认服务端配置)')
+    infer_group.add_argument('--system-prompt',
+                             type=str,
+                             default=None,
+                             help='Qwen3-Omni system prompt (默认服务端配置)')
+    infer_group.add_argument('--context',
+                             type=str,
+                             default=None,
+                             help='ASR 上下文/热词 (默认服务端配置)')
+    infer_group.add_argument('--language',
+                             type=str,
+                             default=None,
+                             help='Qwen3-ASR 强制语种，如 Chinese (默认服务端配置)')
     infer_group.add_argument(
         '--use-history',
         action='store_true',
@@ -712,7 +742,10 @@ Examples:
         simulate_streaming=args.simulate_streaming,
         history_rollback=history_rollback,
         chunk_ms=args.chunk_ms,
-        prompt=args.prompt,
+        system_prompt=args.system_prompt,
+        user_prompt=args.user_prompt,
+        context=args.context,
+        language=args.language,
         use_history=args.use_history,
         record_deltas=args.record_deltas,
     )

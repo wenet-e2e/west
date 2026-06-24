@@ -6,9 +6,16 @@
 - postprocess_transcript: 统一执行空白、标点、语言字段规范化
 - 保持纯字符串处理，不依赖 engine/session 状态
 """
+import logging
+import tempfile
 import unicodedata
 from dataclasses import dataclass
+from functools import lru_cache
+from importlib import import_module
+from pathlib import Path
 from typing import Optional, Tuple
+
+logger = logging.getLogger("RealtimeASR")
 
 _ASR_TEXT_TAG = "<asr_text>"
 _LANG_PREFIX = "language "
@@ -16,12 +23,161 @@ _LANG_PREFIX = "language "
 _TRAILING_PUNCT = frozenset(
     "，。,.!?！？、；;：:…·—–"
 )
+_LEADING_PUNCT = frozenset(
+    "([{《〈「『“‘"
+)
+_ITN_UNAVAILABLE_ERRORS = {}
+_WETEXT_CACHE_DIR = (
+    Path(tempfile.gettempdir()) / "serve_touch_asr" / "wetextprocessing" /
+    "itn")
+_WETEXT_NORMALIZERS = {
+    "zh": "itn.chinese.inverse_normalizer",
+}
+
+
+def _is_latin_word_char(ch: str) -> bool:
+    """ASCII alphanumeric or common word-internal punctuation."""
+    return ch.isascii() and (ch.isalnum() or ch in "_'-")
+
+
+def _is_cjk_char(ch: str) -> bool:
+    return "\u4e00" <= ch <= "\u9fff"
 
 
 def _is_trailing_punct(ch: str) -> bool:
     if ch in _TRAILING_PUNCT:
         return True
     return unicodedata.category(ch).startswith("P")
+
+
+def _is_leading_punct(ch: str) -> bool:
+    return ch in _LEADING_PUNCT or unicodedata.category(ch).startswith("P")
+
+
+def _is_latin_letter(ch: str) -> bool:
+    return ch.isascii() and ch.isalpha()
+
+
+def merge_transcript_boundary(left: str, right: str) -> str:
+    """Merge adjacent transcript segments without gluing boundaries.
+
+    Rules are matched top-down to decide whether to insert a space:
+      1. Either side is whitespace, or right starts with leading punct
+         (open bracket, etc.)            -> join as-is
+      2. Latin word + Latin word         -> space ("hello"+"world")
+      3. Latin word <-> CJK              -> space ("hello"+"世界")
+      4. Word-internal punct (' -) + Latin letter
+                                         -> join as-is (chunk split mid-word)
+      5. Punct + Latin letter            -> space ("hello,"+"world")
+      6. Half-width punct + CJK          -> space ("day."+"今天"); CJK punct
+         (。，) before CJK keeps no space, per CJK typography
+      7. Otherwise                       -> join as-is
+    """
+    if not left:
+        return right
+    if not right:
+        return left
+
+    lch, rch = left[-1], right[0]
+    if lch.isspace() or rch.isspace() or _is_leading_punct(rch):
+        return left + right
+    if _is_latin_word_char(lch) and _is_latin_word_char(rch):
+        return f"{left} {right}"
+    if (_is_latin_word_char(lch) and _is_cjk_char(rch)
+            or _is_cjk_char(lch) and _is_latin_word_char(rch)):
+        return f"{left} {right}"
+    if lch in "'-" and _is_latin_letter(rch):
+        return left + right
+    if _is_trailing_punct(lch) and _is_latin_letter(rch):
+        return f"{left} {right}"
+    if lch.isascii() and _is_trailing_punct(lch) and _is_cjk_char(rch):
+        return f"{left} {right}"
+    return left + right
+
+
+def _itn_lang(language: Optional[str], text: str) -> str:
+    """Pick the ITN normalizer language.
+
+    Only Chinese ITN is supported. English and other explicit non-Chinese
+    languages remain raw even when ITN is enabled. Unknown language falls back
+    to Chinese ITN only when the transcript contains CJK characters.
+    """
+    lang = (language or "").strip().lower()
+    if lang.startswith("en") or lang.startswith("english"):
+        return ""
+    if (
+        lang.startswith("zh")
+        or lang.startswith("chinese")
+        or lang.startswith("mandarin")
+        or lang.startswith("cantonese")
+        or lang.startswith("yue")
+    ):
+        return "zh"
+    if any("\u4e00" <= ch <= "\u9fff" for ch in text):
+        return "zh"
+    return ""
+
+
+@lru_cache(maxsize=4)
+def _get_inverse_normalizer(lang: str):
+    module_name = _WETEXT_NORMALIZERS.get(lang)
+    if module_name is None:
+        raise RuntimeError(f"WeTextProcessing ITN unsupported language: {lang}")
+
+    module = import_module(module_name)
+
+    cache_dir = _WETEXT_CACHE_DIR / lang
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return module.InverseNormalizer(
+        cache_dir=str(cache_dir),
+        overwrite_cache=False,
+    )
+
+
+def warmup_inverse_normalizer(
+    language: Optional[str] = None,
+) -> Tuple[bool, str, str]:
+    """Preload the Chinese ITN normalizer.
+
+    Returns:
+        (available, lang, error_message)
+    """
+    del language
+    lang = "zh"
+    if lang in _ITN_UNAVAILABLE_ERRORS:
+        return False, lang, _ITN_UNAVAILABLE_ERRORS[lang]
+    try:
+        _get_inverse_normalizer(lang)
+        return True, lang, ""
+    except Exception as exc:
+        error = str(exc)
+        _ITN_UNAVAILABLE_ERRORS[lang] = error
+        return False, lang, error
+
+
+def inverse_normalize_transcript(
+    text: str,
+    language: Optional[str] = None,
+    enabled: bool = False,
+) -> str:
+    """Optionally convert spoken-form ASR text to written form."""
+    if not enabled or not text:
+        return text
+
+    lang = _itn_lang(language, text)
+    if not lang:
+        return text
+    if lang in _ITN_UNAVAILABLE_ERRORS:
+        return text
+
+    try:
+        return _get_inverse_normalizer(lang).normalize(text)
+    except Exception as exc:
+        _ITN_UNAVAILABLE_ERRORS[lang] = str(exc)
+        logger.warning(
+            "ITN failed; falling back to raw transcript "
+            f"(lang={lang}, text={text[:80]!r}): {exc}")
+        return text
 
 
 def _strip_trailing_punct(text: str) -> Tuple[str, str]:

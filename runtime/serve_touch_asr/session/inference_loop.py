@@ -1,8 +1,7 @@
 # Copyright (c) 2026 Pengshen Zhang
 """Inference Loop: 单连接推理调度与增量事件生成。
 
-- begin_inference_turn: 计算 history_rollback 后的前缀基线
-- maybe_emit_history_reset: 向前端发送回退光标 delta
+- begin_inference_turn: 计算 history_rollback 后的统一历史基线
 - inference_worker: 根据 commit/VAD/chunk 条件触发模型推理
 - 负责循环调度和事件发送，不直接实现模型调用细节
 """
@@ -11,9 +10,13 @@ import importlib
 import logging
 import time
 import traceback
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional
 
 from model import model_inference
+from model.history_rollback import apply_history_rollback_result
+from model.transcript_postprocess import (inverse_normalize_transcript,
+                                          merge_transcript_boundary)
 from model.vad import detect_leading_silence
 
 if TYPE_CHECKING:
@@ -24,36 +27,87 @@ if TYPE_CHECKING:
 logger = logging.getLogger("RealtimeASR")
 
 
+@dataclass(frozen=True)
+class TurnHistory:
+    base_text: str
+    old_text: str
+    dropped_text: str
+    reason: str
+
+
+def _final_display_transcript(
+    text: str,
+    language: Optional[str],
+    itn_enabled: bool,
+) -> str:
+    return inverse_normalize_transcript(
+        text,
+        language=language,
+        enabled=itn_enabled,
+    )
+
+
+def _restore_trailing_punctuation(text: str, trailing_punct: str) -> str:
+    if not text or not trailing_punct:
+        return text
+    if text.endswith(trailing_punct):
+        return text
+    return f"{text}{trailing_punct}"
+
+
 async def begin_inference_turn(
     *,
     session: "RealtimeSession",
     service_runtime: "ServiceRuntime",
-    realtime_sender,
-) -> str:
-    """推理轮次开始时调用：计算并返回 turn_base_text（history_rollback 后的前缀基线）。"""
+    chunk_id: int,
+) -> TurnHistory:
+    """推理轮次开始时调用：只计算统一历史基线，不提前回退前端。"""
     async with session.lock:
-        old_confirmed = session.asr.confirmed_text
+        history = session.asr.accumulated_text
         history_rollback_cfg = session.asr.history_rollback_config
+        history_reset_chunk_num = session.asr.history_reset_chunk_num
+        min_history_chars = session.asr.min_history_chars
+        use_history = session.asr.use_history
 
-    if history_rollback_cfg.strategy == "none":
-        base = old_confirmed
+    if not use_history:
+        result = apply_history_rollback_result(
+            history,
+            history_rollback_cfg,
+            current_chunk_id=chunk_id,
+            history_reset_chunk_num=chunk_id,
+            min_history_chars=min_history_chars,
+        )
+        base = ""
+        dropped = history
+        reason = "use_history_false"
     else:
         _proc = service_runtime.engine_state.processor
-        base = history_rollback_cfg.apply(
-            old_confirmed,
+        result = apply_history_rollback_result(
+            history,
+            history_rollback_cfg,
             tokenizer=_proc.tokenizer if _proc else None,
+            current_chunk_id=chunk_id,
+            history_reset_chunk_num=history_reset_chunk_num,
+            min_history_chars=min_history_chars,
         )
+        base = result.text
+        dropped = result.dropped
+        reason = result.reason
 
-    if len(base) < len(old_confirmed):
-        await realtime_sender.delta(
-            cursor=len(base),
-            delta="",
-            is_final=False,
-        )
-        async with session.lock:
-            session.asr.confirmed_text = base
+    logger.info(
+        f"[{session.session_id}] TURN_HISTORY "
+        f"old=\"{history[:60]}\"({len(history)}) | "
+        f"base=\"{base[:60]}\"({len(base)}) | "
+        f"drop=\"{dropped[:40]}\"({len(dropped)}) | "
+        f"reason={reason} "
+        f"[{result.strategy}/{result.value}]")
 
-    return base
+    return TurnHistory(
+        base_text=base,
+        old_text=history,
+        dropped_text=dropped,
+        reason=reason,
+    )
 
 
 async def send_streaming_delta(
@@ -69,15 +123,15 @@ async def send_streaming_delta(
     if is_final:
         target_text = model_full_text
     else:
-        target_text = turn_base + model_full_text
-
-    async with session.lock:
-        prev_confirmed = session.asr.confirmed_text
+        target_text = merge_transcript_boundary(turn_base, model_full_text)
 
     cursor = len(turn_base)
     delta_to_send = target_text[cursor:]
 
-    if delta_to_send or cursor < len(prev_confirmed) or is_final:
+    if not delta_to_send and not is_final:
+        return target_text
+
+    if delta_to_send or is_final:
         async with session.lock:
             language = session.asr.language
 
@@ -126,9 +180,24 @@ async def run_inference_loop(ctx) -> None:
             chunk_ms = (session.asr.chunk_ms
                         if session.asr.chunk_ms is not None
                         else cfg.chunk_ms)
-            prompt = (session.asr.prompt
-                      if session.asr.prompt is not None
-                      else cfg.prompt)
+            user_prompt = (session.asr.user_prompt
+                           if session.asr.user_prompt is not None
+                           else cfg.user_prompt)
+            system_prompt = (session.asr.system_prompt
+                             if session.asr.system_prompt is not None
+                             else cfg.system_prompt)
+            context = (session.asr.context
+                       if session.asr.context is not None
+                       else cfg.context)
+            language = (session.asr.config_language
+                        if session.asr.config_language is not None
+                        else cfg.language)
+            itn_enabled = (session.asr.itn_enabled
+                           if session.asr.itn_enabled is not None
+                           else cfg.itn_enabled)
+            # Process-level availability is only Chinese ITN warmup diagnostics.
+            # Non-Chinese transcripts are left raw in post-processing.
+            itn_enabled = bool(itn_enabled)
 
             async with session.lock:
                 is_committing = session.is_committing
@@ -159,19 +228,6 @@ async def run_inference_loop(ctx) -> None:
                         f"[{session_id}] COMMIT skipped "
                         "(VAD never detected speech), "
                         "sending empty result")
-                    turn_base = await begin_inference_turn(
-                        session=session,
-                        service_runtime=service_runtime,
-                        realtime_sender=realtime_sender,
-                    )
-                    await send_streaming_delta(
-                        session=session,
-                        realtime_sender=realtime_sender,
-                        turn_base=turn_base,
-                        model_full_text="",
-                        is_final=True,
-                        chunk_id=session.asr.chunk_id,
-                    )
                     await realtime_sender.completed(
                         transcript="", language=None)
                     await realtime_sender.done()
@@ -238,31 +294,32 @@ async def run_inference_loop(ctx) -> None:
                     f"audio={audio_sec:.2f}s chunk={chunk_id} "
                     f"force={is_committing}")
 
-                turn_base = await begin_inference_turn(
+                turn_history = await begin_inference_turn(
                     session=session,
                     service_runtime=service_runtime,
-                    realtime_sender=realtime_sender,
+                    chunk_id=chunk_id,
                 )
-                # use_history=False 或 history_reset 生效时，模型看全量音频，
-                # 输出即完整文本，不需要拼 turn_base（否则会重复），cursor=0 覆盖
-                if not session.asr.use_history:
-                    turn_base = ""
-                elif chunk_id <= session.asr.history_reset_chunk_num:
-                    turn_base = ""
+                turn_base = turn_history.base_text
                 final_text = ""
+                streamed_text = False
                 turn_t0 = time.time()
 
                 es = service_runtime.engine_state
                 infer_gen = model_inference.run_model_inference(
-                    audio_numpy, prompt, session,
+                    audio_numpy, user_prompt, session,
                     es.engine, es.processor, es.process_mm_info,
                     infer_tag=f"#{infer_count}/chunk={chunk_id}",
                     model_type=service_runtime.settings.model_type,
                     cfg=cfg,
+                    system_prompt=system_prompt,
+                    context=context,
+                    language=language,
+                    history_base=turn_base,
                 )
                 async for current_full_text in infer_gen:
                     if current_full_text:
                         final_text = current_full_text
+                        streamed_text = True
                         await send_streaming_delta(
                             session=session,
                             realtime_sender=realtime_sender,
@@ -291,18 +348,25 @@ async def run_inference_loop(ctx) -> None:
                         f"chunk={chunk_id} infers={infer_count}")
                     async with session.lock:
                         accumulated = session.asr.accumulated_text
-                    target = await send_streaming_delta(
-                        session=session,
-                        realtime_sender=realtime_sender,
-                        turn_base=turn_base,
-                        model_full_text=accumulated,
-                        is_final=True,
-                        chunk_id=chunk_id,
-                    )
-                    async with session.lock:
                         language = session.asr.language
+                        trailing_punct = session.asr.trailing_punct
+                    display_source = _restore_trailing_punctuation(
+                        accumulated, trailing_punct)
+                    if streamed_text:
+                        target = await send_streaming_delta(
+                            session=session,
+                            realtime_sender=realtime_sender,
+                            turn_base=turn_base,
+                            model_full_text=display_source,
+                            is_final=True,
+                            chunk_id=chunk_id,
+                        )
+                    else:
+                        target = display_source
+                    display_target = _final_display_transcript(
+                        target, language, itn_enabled)
                     await realtime_sender.completed(
-                        transcript=target,
+                        transcript=display_target,
                         language=language,
                     )
                     await realtime_sender.done()
@@ -316,36 +380,26 @@ async def run_inference_loop(ctx) -> None:
                     await _reset_vad_state(session=session, state=state)
 
             elif is_committing:
-                logger.warning(
-                    f"[{session_id}] COMMIT_CACHED "
-                    f"accumulated=\"{session.asr.accumulated_text[:60]}\" "
-                    f"buf={len(session.asr.buffer)}B "
-                    f"last_chunk={session.asr.chunk_id} "
-                    f"infers={infer_count}")
                 async with session.lock:
                     accumulated = session.asr.accumulated_text
-                turn_base = await begin_inference_turn(
-                    session=session,
-                    service_runtime=service_runtime,
-                    realtime_sender=realtime_sender,
-                )
-                if not session.asr.use_history:
-                    turn_base = ""
-                elif chunk_id <= session.asr.history_reset_chunk_num:
-                    turn_base = ""
-                target = await send_streaming_delta(
-                    session=session,
-                    realtime_sender=realtime_sender,
-                    turn_base=turn_base,
-                    model_full_text=accumulated,
-                    is_final=True,
-                    chunk_id=session.asr.chunk_id,
-                )
-                async with session.lock:
+                    buffer_len = len(session.asr.buffer)
+                    current_chunk_id = session.asr.chunk_id
                     language = session.asr.language
+                    trailing_punct = session.asr.trailing_punct
+                logger.warning(
+                    f"[{session_id}] COMMIT_CACHED "
+                    f"accumulated=\"{accumulated[:60]}\" "
+                    f"buf={buffer_len}B "
+                    f"last_chunk={current_chunk_id} "
+                    f"infers={infer_count}")
+                target = accumulated
 
+                display_source = _restore_trailing_punctuation(
+                    target, trailing_punct)
+                display_target = _final_display_transcript(
+                    display_source, language, itn_enabled)
                 await realtime_sender.completed(
-                    transcript=target,
+                    transcript=display_target,
                     language=language,
                 )
                 await realtime_sender.done()

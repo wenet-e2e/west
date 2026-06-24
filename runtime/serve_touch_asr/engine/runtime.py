@@ -89,6 +89,9 @@ class ServiceSettings:
     model_type: str = "qwen3-omni"
     save_audio: bool = False
     audio_save_dir: str = "saved_audios"
+    itn_available: bool = True
+    itn_lang: str = ""
+    itn_error: str = ""
     default_history_rollback_config: HistoryRollbackConfig = field(
         default_factory=HistoryRollbackConfig)
 
