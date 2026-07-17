@@ -1,0 +1,38 @@
+startup:
+  model_type: qwen3-asr
+  gpu_memory_utilization: 0.75
+  save_audio: true
+  audio_save_dir: examples/qwen3asr/saved_audios
+  ssl:
+    enabled: true
+runtime:
+  log_level: INFO
+  system_prompt: ''
+  user_prompt: ''
+  context: ''
+  language: ''
+  itn_enabled: false
+  chunk_ms: 1000
+  sampling_params:
+    temperature: 0.01
+    top_p: 0.1
+    top_k: 1
+    max_tokens: 512
+    seed: 42
+    repetition_penalty: 1.05
+  silence_skip:
+    enabled: true
+    frame_ms: 20
+    rms_threshold: 0.001
+    min_voiced_frames: 1
+  turn_detection:
+    type: none
+    threshold: 0.8
+    silence_duration_ms: 700
+    prefix_padding_ms: 200
+  history_rollback:
+    enabled: false
+    strategy: none
+    value: 0
+  history_reset_chunk_num: 2
+  min_history_chars: 5

@@ -1,0 +1,2479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>REALTIME ASR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Doto:wght@400;700&family=Space+Grotesk:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    /* Nothing Design System — 设计令牌 */
+    :root {
+      /* 深色模式（默认） */
+      --black: #000000;
+      --surface: #111111;
+      --surface-raised: #1A1A1A;
+      --border: #222222;
+      --border-visible: #333333;
+      --text-disabled: #666666;
+      --text-secondary: #999999;
+      --text-primary: #E8E8E8;
+      --text-display: #FFFFFF;
+      --accent: #D71921;
+      --accent-subtle: rgba(215,25,33,0.15);
+      --success: #4A9E5C;
+      --warning: #D4A843;
+
+      --space-xs: 4px;
+      --space-sm: 8px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+      --space-2xl: 48px;
+    }
+
+    /* 浅色模式（温暖米白） */
+    :root[data-theme="light"] {
+      --black: #F5F5F3;
+      --surface: #EAEAE8;
+      --surface-raised: #DFDFDD;
+      --border: #D0D0CE;
+      --border-visible: #BBBBBA;
+      --text-disabled: #8A8A8A;
+      --text-secondary: #555555;
+      --text-primary: #1A1A1A;
+      --text-display: #000000;
+      --accent-subtle: rgba(215,25,33,0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    /* 全局样式 — OLED 纯黑底 + Space Mono 统一字体 */
+    body {
+      font-family: "Space Mono", "JetBrains Mono", monospace;
+      font-weight: 400;
+      background-color: var(--black);
+      color: var(--text-primary);
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 顶部状态栏 */
+    .header {
+      padding: 15px var(--space-lg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid var(--border-visible);
+      flex-shrink: 0;
+    }
+
+    .header-title {
+      font-family: "Doto", "Space Mono", monospace;
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-display);
+    }
+
+    .status-badge {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .indicator-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--text-disabled);
+      transition: background-color 0.2s ease-out;
+    }
+    .indicator-dot.active { background-color: var(--success); }
+    .indicator-dot.error { background-color: var(--accent); }
+
+    /* 布局容器：左右分栏 */
+    .main-container {
+      display: flex;
+      flex: 1;
+      gap: 2px;
+      background: var(--border-visible);
+      overflow: hidden;
+    }
+
+    /* 左侧：识别结果与控制区 (黄金比例 61.8%) */
+    .left-panel {
+      flex: 1.618;
+      display: flex;
+      flex-direction: column;
+      background: var(--black);
+      min-width: 0;
+      min-height: 0;
+    }
+
+    /* 右侧：事件日志区 (黄金比例 38.2%) */
+    .right-panel {
+      flex: 1;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* 分区标签 — Space Mono 全大写 */
+    .section-label {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 2px solid var(--border-visible);
+    }
+
+    /* 文本展示区 — 点阵网格背景 */
+    .text-display-area {
+      flex: 1;
+      padding: var(--space-lg);
+      overflow-y: auto;
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text-primary);
+      background-image: radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
+      background-size: 16px 16px;
+    }
+
+    .session-block {
+      margin-bottom: var(--space-md);
+    }
+    .session-block:not(:first-child) {
+      border-top: 1px solid var(--border);
+      padding-top: var(--space-md);
+    }
+    .session-block-header {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-disabled);
+      margin-bottom: var(--space-sm);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .session-block-header::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-disabled);
+    }
+    .session-block.active .session-block-header::before {
+      background: var(--accent);
+    }
+    .session-block-header .lang-tag {
+      margin-left: auto;
+      color: var(--text-secondary);
+    }
+    .turn-line {
+      padding: 2px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-family: -apple-system, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+      font-weight: 300;
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text-display);
+    }
+    .turn-line .turn-check {
+      color: var(--success);
+      font-size: 14px;
+      margin-left: var(--space-xs);
+    }
+
+    /* 历史分隔标签 */
+    .history-label {
+      font-family: "Space Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-disabled);
+      padding: var(--space-md) 0;
+      margin-top: var(--space-md);
+      border-top: 1px solid var(--border-visible);
+    }
+
+    /* 日志展示区 */
+    .log-display-area {
+      flex: 1;
+      padding: var(--space-md);
+      overflow-y: auto;
+      font-family: "Space Mono", monospace;
+      font-size: 13px;
+      line-height: 1.35;
+      color: var(--text-secondary);
+    }
+
+    .log-entry {
+      margin-bottom: 5px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid var(--border);
+      word-break: break-all;
+    }
+    .log-time {
+      color: var(--text-disabled);
+      margin-right: var(--space-sm);
+      font-size: 12px;
+    }
+    .log-type-send { color: var(--text-display); font-weight: 700; }
+    .log-type-recv { color: var(--success); font-weight: 700; }
+    .log-expand {
+      cursor: pointer;
+      color: var(--text-secondary);
+      user-select: none;
+    }
+    .log-expand:hover { color: var(--text-display); }
+
+    /* 顶部操作条 — 按钮 + 内联参数 */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      padding: 12px var(--space-lg);
+      border-bottom: 2px solid var(--border-visible);
+      flex-shrink: 0;
+    }
+
+    .toolbar-params {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+      margin-left: auto;
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary);
+    }
+
+    .toolbar-param {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .toolbar-param label {
+      text-transform: uppercase;
+      color: var(--text-disabled);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+    }
+
+    .toolbar-param input,
+    .toolbar-param select {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border-visible);
+      color: var(--text-primary);
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      padding: 2px 4px;
+      outline: none;
+      width: 60px;
+      border-radius: 0;
+    }
+    .toolbar-param select {
+      width: auto;
+      min-width: 80px;
+      -webkit-appearance: none;
+      appearance: none;
+      cursor: pointer;
+      padding-right: 16px;
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 2px center;
+    }
+    .toolbar-param input:focus,
+    .toolbar-param select:focus {
+      border-bottom-color: var(--text-primary);
+    }
+    .toolbar-param input:disabled,
+    .toolbar-param select:disabled,
+    .config-row input:disabled,
+    .config-row select:disabled {
+      background: transparent;
+      opacity: 1;
+    }
+    .toolbar-param input:disabled:not(:placeholder-shown),
+    .toolbar-param select:disabled,
+    .config-row input:disabled:not(:placeholder-shown),
+    .config-row select:disabled {
+      color: var(--text-display);
+      -webkit-text-fill-color: var(--text-display);
+    }
+    .toolbar-param input:disabled::placeholder,
+    .config-row input:disabled::placeholder {
+      color: var(--text-disabled);
+      opacity: 1;
+      -webkit-text-fill-color: var(--text-disabled);
+    }
+    .toolbar-param input:-webkit-autofill,
+    .config-row input:-webkit-autofill {
+      box-shadow: 0 0 0 1000px transparent inset;
+      -webkit-text-fill-color: var(--text-display);
+      transition: background-color 9999s ease-out;
+    }
+
+    .toolbar-gear {
+      font-family: "Space Mono", monospace;
+      font-size: 14px;
+      color: var(--text-disabled);
+      cursor: pointer;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      user-select: none;
+      transition: border-color 0.2s ease-out, color 0.2s ease-out;
+    }
+    .toolbar-gear:hover {
+      color: var(--text-primary);
+      border-color: var(--border-visible);
+    }
+    .toolbar-gear.active {
+      color: var(--text-display);
+      border-color: var(--text-secondary);
+    }
+
+    .action-button {
+      font-family: "Space Mono", monospace;
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 8px 24px;
+      border: 1px solid var(--border-visible);
+      border-radius: 999px;
+      cursor: pointer;
+      color: var(--text-primary);
+      background: transparent;
+      transition: border-color 0.2s ease-out, color 0.2s ease-out;
+      min-height: 44px;
+      white-space: nowrap;
+    }
+
+    .action-button:hover {
+      border-color: var(--text-primary);
+      color: var(--text-display);
+    }
+
+    .action-button.is-working {
+      background: var(--text-display);
+      color: var(--black);
+      border-color: var(--text-display);
+    }
+
+    .action-button.is-working:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--text-display);
+    }
+
+    .action-button.upload-btn {
+      border-color: var(--border-visible);
+      color: var(--text-secondary);
+    }
+    .action-button.upload-btn:hover {
+      border-color: var(--text-secondary);
+      color: var(--text-primary);
+    }
+    .action-button.upload-btn.is-sending {
+      border-color: var(--warning);
+      color: var(--warning);
+      cursor: not-allowed;
+    }
+
+    .waveform-container {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 16px;
+      margin-left: var(--space-sm);
+    }
+    .waveform-bar {
+      width: 4px;
+      height: 2px;
+      background-color: var(--text-primary);
+      transition: height 0.05s ease-out;
+      border-radius: 0;
+    }
+
+    .action-button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* 配置面板 — 折叠在操作条下方 */
+    .config-panel {
+      display: none;
+      padding: var(--space-sm) var(--space-lg);
+      border-bottom: 1px solid var(--border-visible);
+      background: var(--black);
+    }
+    .config-panel.open { display: block; }
+
+    .config-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+      font-size: 13px;
+    }
+    .config-row label {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      width: 90px;
+      flex-shrink: 0;
+      color: var(--text-secondary);
+    }
+    .config-row input[type="number"],
+    .config-row input[type="text"],
+    .config-row select {
+      flex: 1;
+      padding: 6px 8px;
+      border: none;
+      border-bottom: 1px solid var(--border-visible);
+      font-family: "Space Mono", monospace;
+      font-size: 13px;
+      background: transparent;
+      color: var(--text-primary);
+      outline: none;
+      border-radius: 0;
+      min-width: 0;
+    }
+    .config-row input:focus, .config-row select:focus {
+      border-bottom-color: var(--text-primary);
+    }
+    .config-row select {
+      -webkit-appearance: none;
+      appearance: none;
+      cursor: pointer;
+      padding-right: 20px;
+      background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%23999999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 4px center;
+    }
+
+    .config-row .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      cursor: pointer;
+    }
+    .config-row .toggle-switch input { display: none; }
+    .config-row .toggle-switch .slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border-visible);
+      border-radius: 999px;
+      transition: background 0.2s ease-out;
+    }
+    .config-row .toggle-switch .slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 2px; top: 2px;
+      background: var(--text-disabled);
+      border-radius: 50%;
+      transition: transform 0.2s ease-out, background 0.2s ease-out;
+    }
+    .config-row .toggle-switch input:checked + .slider {
+      background: var(--text-display);
+    }
+    .config-row .toggle-switch input:checked + .slider::before {
+      transform: translateX(16px);
+      background: var(--black);
+    }
+
+    /* 打字机光标 — 红色强调，机械闪烁 */
+    .typing-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 18px;
+      background-color: var(--accent);
+      vertical-align: middle;
+      animation: blink 1s step-end infinite;
+      margin-left: 2px;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* 模型加载中横幅 */
+    .loading-banner {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      padding: var(--space-md);
+      margin: var(--space-sm) 0;
+      border: 1px solid var(--border-visible);
+      border-radius: 8px;
+      animation: fadeIn 0.2s ease-out;
+    }
+    .loading-banner-spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border-visible);
+      border-top-color: var(--text-display);
+      border-radius: 50%;
+      flex-shrink: 0;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-banner-title {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+    .loading-banner-stage {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    /* 错误提示横幅 */
+    .error-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md);
+      margin: var(--space-sm) 0;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      animation: fadeIn 0.2s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .error-banner-icon { flex-shrink: 0; margin-top: 2px; }
+    .error-banner-title {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+    .error-banner-detail {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    /* 滚动条美化 */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-visible); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-disabled); }
+
+    /* 日志计数器 */
+    .log-counter {
+      font-family: "Space Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--text-disabled);
+    }
+
+    /* 模式切换按钮 */
+    .theme-toggle-btn {
+      font-family: "Space Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      background: transparent;
+      border: 1px solid var(--border-visible);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s ease-out;
+      border-radius: 4px;
+    }
+    .theme-toggle-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--text-primary);
+    }
+
+    /* 服务器状态指示器 */
+    .server-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--text-disabled);
+      margin-left: var(--space-sm);
+      transition: background-color 0.2s ease-out;
+      flex-shrink: 0;
+    }
+    .server-status-dot.checking {
+      background-color: var(--warning);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .server-status-dot.online {
+      background-color: var(--success);
+    }
+    .server-status-dot.offline {
+      background-color: var(--accent);
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 顶部状态栏 -->
+  <div class="header">
+    <div style="display:flex; align-items:center; gap:var(--space-lg)">
+      <div class="header-title">REALTIME ASR</div>
+      <div id="audio_waveform" class="waveform-container" style="margin-left:0; opacity:0.3; transition:opacity 0.2s ease-out">
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:var(--space-lg)">
+      <button id="theme_toggle_button" class="theme-toggle-btn">LIGHT MODE</button>
+      <div class="status-badge">
+        <div id="connection_indicator" class="indicator-dot"></div>
+        <span id="connection_status_text">DISCONNECTED</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主容器 -->
+  <div class="main-container">
+
+    <!-- 左侧区域 -->
+    <div class="left-panel">
+      <!-- 操作条：按钮 + 内联关键参数 + gear 展开详细配置 -->
+      <div class="toolbar">
+        <button id="toggle_mic_button" class="action-button">START</button>
+        <button id="upload_audio_button" class="action-button upload-btn">UPLOAD</button>
+        <input type="file" id="audio_file_input" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.opus" style="display: none;" />
+        <div class="toolbar-params">
+          <div class="toolbar-param">
+            <label>CHUNK</label>
+            <input type="number" id="cfg_chunk_ms" value="1000" min="200" max="10000" step="100">
+          </div>
+          <div class="toolbar-param">
+            <label>TURN</label>
+            <select id="cfg_turn_detection">
+              <option value="none" selected>none</option>
+              <option value="server_vad">vad</option>
+            </select>
+          </div>
+          <div class="toolbar-gear" id="config_toggle">+</div>
+        </div>
+      </div>
+
+      <!-- 详细配置（点 gear 展开） -->
+      <div class="config-panel" id="config_panel">
+        <div class="config-row">
+          <label>SERVER</label>
+          <select id="cfg_server_preset"></select>
+          <input type="text" id="cfg_custom_host" placeholder="ws(s)://host:port" style="display:none;flex:1">
+          <button type="button" id="cfg_auto_server_button" style="display:none;flex:none;padding:6px 10px;border:1px solid var(--border-visible);background:transparent;color:var(--text-primary);font-family:'Space Mono',monospace;font-size:12px;cursor:pointer">AUTO</button>
+          <span class="server-status-dot" id="server_status_dot"></span>
+        </div>
+        <div class="config-row">
+          <label>MIC</label>
+          <select id="cfg_mic_device">
+            <option value="">System default</option>
+          </select>
+        </div>
+        <div class="config-row">
+          <label>USER PROMPT</label>
+          <input type="text" id="cfg_user_prompt" value="" placeholder="将这段语音转录为纯文本">
+        </div>
+        <div class="config-row">
+          <label>CONTEXT</label>
+          <input type="text" id="cfg_context" value="" placeholder="上下文/热词，可为空">
+        </div>
+        <div class="config-row">
+          <label>LANG</label>
+          <input type="text" id="cfg_language" value="" placeholder="自动检测（或输入 Chinese/English）">
+        </div>
+        <div class="config-row">
+          <label>ITN</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="cfg_itn_enabled">
+            <span class="slider"></span>
+          </label>
+          <span style="color:var(--text-disabled);font-size:11px;font-family:'Space Mono',monospace;letter-spacing:0.04em;margin-left:8px">书面化</span>
+          <span id="cfg_itn_status" style="color:var(--text-disabled);font-size:11px;font-family:'Space Mono',monospace;letter-spacing:0.04em;margin-left:8px">auto</span>
+        </div>
+        <div class="config-row">
+          <label>MODE</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="cfg_use_history" checked>
+            <span class="slider"></span>
+          </label>
+          <span style="color:var(--text-disabled);font-size:11px;font-family:'Space Mono',monospace;letter-spacing:0.04em;margin-left:8px" id="cfg_history_label">伪流式</span>
+          <span style="color:var(--text-disabled);font-size:11px;font-family:'Space Mono',monospace;letter-spacing:0.04em;margin-left:16px">ROLLBACK</span>
+          <span id="cfg_history_rollback_row" style="display:flex;align-items:center;gap:6px;margin-left:8px">
+            <select id="cfg_history_rollback_strategy">
+              <option value="none">none</option>
+              <option value="ratio">ratio</option>
+              <option value="chars">chars</option>
+              <option value="words" selected>words</option>
+              <option value="tokens">tokens</option>
+            </select>
+            <input type="number" id="cfg_history_rollback_value" value="1" min="0" step="0.1" style="width:50px;flex:none" placeholder="1">
+          </span>
+        </div>
+        <div class="config-row">
+          <label>TURN DET.</label>
+          <div id="td_hint" style="flex:1;font-size:11px;line-height:1.5;color:var(--text-disabled);font-family:'Space Mono',monospace;letter-spacing:0.02em"></div>
+        </div>
+      </div>
+
+      <!-- 识别结果展示区 -->
+      <div class="text-display-area" id="result_text_box">
+        <div id="active_area"></div>
+        <div id="history_label" class="history-label" style="display:none;">[HISTORY]</div>
+        <div id="history_area"></div>
+        <span class="typing-cursor" id="cursor_element" style="display: none;"></span>
+      </div>
+    </div>
+
+    <!-- 右侧区域 -->
+    <div class="right-panel">
+      <div class="section-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>EVENT LOG</span>
+        <span id="log_counter" class="log-counter">COLLAPSED</span>
+      </div>
+      <div class="log-display-area" id="log_display_area"></div>
+    </div>
+
+  </div>
+
+  <script>
+    // =========================================
+    // 模式切换
+    // =========================================
+    const themeToggleButton = document.getElementById('theme_toggle_button');
+    let isLightMode = false;
+    themeToggleButton.addEventListener('click', () => {
+      isLightMode = !isLightMode;
+      if (isLightMode) {
+        document.documentElement.setAttribute('data-theme', 'light');
+        themeToggleButton.innerText = 'DARK MODE';
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+        themeToggleButton.innerText = 'LIGHT MODE';
+      }
+    });
+
+    // =========================================
+    // 服务地址与健康检查
+    // =========================================
+
+    const AUTO_SERVER_PRESET = {
+      host: location.hostname || 'localhost',
+      port: location.port || 8001,
+      protocol: location.protocol === 'https:' ? 'wss' : 'ws',
+      name: 'AUTO',
+      label: 'AUTO (CURRENT HOST)',
+    };
+
+    const SERVER_PRESETS = { auto: AUTO_SERVER_PRESET };
+
+    function server_preset_label(key, config) {
+      if (config.label) return config.label;
+      const name = config.name || key.toUpperCase();
+      return `${name} (${config.protocol}://${config.host}:${config.port})`;
+    }
+
+    function parse_custom_server(raw_value) {
+      const value = raw_value.trim();
+      if (!value) {
+        return { host: 'localhost', port: 8001, protocol: 'ws', name: 'Custom' };
+      }
+      const url_text = /^(wss?:\/\/)/.test(value) ? value : `ws://${value}`;
+      try {
+        const url = new URL(url_text);
+        return {
+          host: url.hostname || 'localhost',
+          port: parseInt(url.port || '8001'),
+          protocol: url.protocol === 'wss:' ? 'wss' : 'ws',
+          name: 'Custom',
+        };
+      } catch (_) {
+        return { host: value, port: 8001, protocol: 'ws', name: 'Custom' };
+      }
+    }
+
+    // 页面默认始终使用当前 host，CUSTOM 只在用户本次手动选择后启用。
+    let selected_server_key = 'auto';
+    let custom_server_host = localStorage.getItem('asr_custom_server') || '';
+    localStorage.setItem('asr_selected_server', selected_server_key);
+
+    // 获取当前服务器配置
+    function get_current_server_config() {
+      const key = selected_server_key;
+      if (key === 'custom' && custom_server_host) {
+        return parse_custom_server(custom_server_host);
+      }
+      return SERVER_PRESETS[key] || SERVER_PRESETS['auto'];
+    }
+
+    // 构建服务器地址
+    function build_server_urls() {
+      const config = get_current_server_config();
+      const ws_url = `${config.protocol}://${config.host}:${config.port}/v1/realtime`;
+      const http_protocol = config.protocol === 'wss' ? 'https:' : 'http:';
+      const health_url = `${http_protocol}//${config.host}:${config.port}/health`;
+      return { ws_url, health_url, config };
+    }
+
+    let { ws_url: server_websocket_url, health_url: server_health_url, config: current_server_config } = build_server_urls();
+
+    function log_current_server(prefix) {
+      add_log('SYS', `${prefix}: ws=${server_websocket_url}, health=${server_health_url}`);
+    }
+
+    const ws_protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const server_port = location.port || 8001;
+
+    /**
+     * 轮询 GET /health 直到模型就绪，期间每 2 秒刷新一次 UI 进度。
+     * 超过 MAX_POLL_MS（默认 180s）后抛出 Error，由调用方 catch 处理。
+     */
+    const HEALTH_POLL_INTERVAL_MS = 2000;
+    const HEALTH_POLL_MAX_MS = 180_000;  // 3 分钟，足够最大模型加载
+
+    async function poll_health_until_ready() {
+      const deadline = Date.now() + HEALTH_POLL_MAX_MS;
+      while (true) {
+        if (Date.now() >= deadline) {
+          throw new Error(`模型加载超时（超过 ${HEALTH_POLL_MAX_MS / 1000}s），请检查服务端日志`);
+        }
+        try {
+          const resp = await fetch(server_health_url, { cache: 'no-store' });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.ready) return;
+            update_ui_status('', '[LOADING]');
+            show_loading_in_result_area(data.stage);
+            add_log('SYS', `模型加载中: ${data.stage}`);
+          }
+        } catch (_) {
+          add_log('SYS', '等待服务启动...');
+        }
+        await new Promise(r => setTimeout(r, HEALTH_POLL_INTERVAL_MS));
+      }
+    }
+
+    // =========================================
+    // 界面元素
+    // =========================================
+    const ui_button = document.getElementById('toggle_mic_button');
+    const ui_upload_button = document.getElementById('upload_audio_button');
+    const ui_file_input = document.getElementById('audio_file_input');
+    const ui_status_text = document.getElementById('connection_status_text');
+    const ui_indicator_dot = document.getElementById('connection_indicator');
+    const ui_text_box = document.getElementById('result_text_box');
+    const ui_cursor = document.getElementById('cursor_element');
+    const ui_log_area = document.getElementById('log_display_area');
+    const ui_active_area = document.getElementById('active_area');
+    const ui_history_area = document.getElementById('history_area');
+    const ui_history_label = document.getElementById('history_label');
+
+    // 配置面板元素
+    const ui_config_toggle = document.getElementById('config_toggle');
+    const ui_config_panel = document.getElementById('config_panel');
+    const cfg_server_preset = document.getElementById('cfg_server_preset');
+    const cfg_custom_host = document.getElementById('cfg_custom_host');
+    const cfg_auto_server_button = document.getElementById('cfg_auto_server_button');
+    const server_status_dot = document.getElementById('server_status_dot');
+    const cfg_mic_device = document.getElementById('cfg_mic_device');
+    const cfg_chunk_ms = document.getElementById('cfg_chunk_ms');
+    const cfg_user_prompt = document.getElementById('cfg_user_prompt');
+    const cfg_context = document.getElementById('cfg_context');
+    const cfg_language = document.getElementById('cfg_language');
+    const cfg_itn_enabled = document.getElementById('cfg_itn_enabled');
+    const cfg_itn_status = document.getElementById('cfg_itn_status');
+    const cfg_use_history = document.getElementById('cfg_use_history');
+    const cfg_history_label = document.getElementById('cfg_history_label');
+    const cfg_history_rollback_strategy = document.getElementById('cfg_history_rollback_strategy');
+    const cfg_history_rollback_value = document.getElementById('cfg_history_rollback_value');
+    const cfg_turn_detection = document.getElementById('cfg_turn_detection');
+    const td_hint = document.getElementById('td_hint');
+    const saved_language = localStorage.getItem('asr_language');
+    if (saved_language !== null) {
+      cfg_language.value = saved_language;
+    }
+    localStorage.removeItem('asr_mic_device_id');
+
+    const TD_HINTS = {
+      'none': '手动提交：点击 START 收音，点击 STOP 提交。中间按 chunk_ms 触发增量推理。',
+      'server_vad': '自动端点：服务端 Silero VAD 实时检测语音起止。停顿后自动提交并开始新一轮。'
+    };
+    function sync_td_hint() {
+      td_hint.textContent = TD_HINTS[cfg_turn_detection.value] || '';
+    }
+    cfg_turn_detection.addEventListener('change', sync_td_hint);
+    sync_td_hint();
+
+    // =========================================
+    // 服务器切换逻辑
+    // =========================================
+
+    function render_server_preset_options() {
+      cfg_server_preset.innerHTML = '';
+      const auto_option = document.createElement('option');
+      auto_option.value = 'auto';
+      auto_option.textContent = server_preset_label('auto', SERVER_PRESETS.auto);
+      cfg_server_preset.appendChild(auto_option);
+
+      const custom_option = document.createElement('option');
+      custom_option.value = 'custom';
+      custom_option.textContent = 'CUSTOM';
+      cfg_server_preset.appendChild(custom_option);
+    }
+
+    function sync_custom_server_input() {
+      const is_custom = selected_server_key === 'custom';
+      cfg_server_preset.style.display = is_custom ? 'none' : '';
+      cfg_custom_host.style.display = is_custom ? '' : 'none';
+      cfg_auto_server_button.style.display = is_custom ? '' : 'none';
+      if (is_custom) {
+        cfg_custom_host.value = custom_server_host;
+        cfg_custom_host.focus();
+      }
+    }
+
+    function switch_to_auto_server() {
+      selected_server_key = 'auto';
+      cfg_server_preset.value = selected_server_key;
+      localStorage.setItem('asr_selected_server', selected_server_key);
+      sync_custom_server_input();
+
+      const urls = build_server_urls();
+      server_websocket_url = urls.ws_url;
+      server_health_url = urls.health_url;
+      current_server_config = urls.config;
+      log_current_server('切换服务器');
+      check_server_health();
+    }
+
+    // 初始化服务器选择器
+    render_server_preset_options();
+    cfg_server_preset.value = selected_server_key;
+    if (!cfg_server_preset.value) {
+      selected_server_key = 'auto';
+      cfg_server_preset.value = selected_server_key;
+      localStorage.setItem('asr_selected_server', selected_server_key);
+    }
+    sync_custom_server_input();
+
+    // 服务器切换事件
+    cfg_server_preset.addEventListener('change', () => {
+      selected_server_key = cfg_server_preset.value;
+      localStorage.setItem('asr_selected_server', selected_server_key);
+      sync_custom_server_input();
+
+      if (selected_server_key === 'custom') {
+        add_log('SYS', '请输入 CUSTOM 服务器地址');
+        return;
+      }
+
+      // 更新服务器地址
+      const urls = build_server_urls();
+      server_websocket_url = urls.ws_url;
+      server_health_url = urls.health_url;
+      current_server_config = urls.config;
+
+      log_current_server('切换服务器');
+      check_server_health();
+    });
+
+    // 自定义服务器地址输入
+    cfg_custom_host.addEventListener('change', () => {
+      custom_server_host = cfg_custom_host.value.trim();
+      localStorage.setItem('asr_custom_server', custom_server_host);
+
+      if (selected_server_key === 'custom') {
+        const urls = build_server_urls();
+        server_websocket_url = urls.ws_url;
+        server_health_url = urls.health_url;
+        current_server_config = urls.config;
+
+        log_current_server('更新自定义服务器');
+        check_server_health();
+      }
+    });
+    cfg_custom_host.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        cfg_custom_host.blur();
+      } else if (event.key === 'Escape') {
+        switch_to_auto_server();
+      }
+    });
+    cfg_auto_server_button.addEventListener('click', switch_to_auto_server);
+
+    function normalize_default_microphone_label(label) {
+      return (label || '')
+        .replace(/^(default|默认)\s*[-:：]\s*/i, '')
+        .trim();
+    }
+
+    function set_default_microphone_label(label) {
+      const option = cfg_mic_device.querySelector('option[value=""]');
+      if (!option) return;
+      const normalized = normalize_default_microphone_label(label);
+      option.textContent = normalized ? `System default (${normalized})` : 'System default';
+    }
+
+    async function refresh_microphone_devices() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        add_log('ERR', '浏览器不支持 enumerateDevices');
+        return;
+      }
+
+      const previous = cfg_mic_device.value || '';
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const microphones = devices.filter(d => d.kind === 'audioinput');
+
+        cfg_mic_device.innerHTML = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'System default';
+        cfg_mic_device.appendChild(defaultOption);
+
+        const default_microphone = microphones.find(device => device.deviceId === 'default');
+        set_default_microphone_label(default_microphone ? default_microphone.label : '');
+
+        microphones.filter(device => device.deviceId !== 'default').forEach((device, idx) => {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          option.textContent = device.label || `Microphone ${idx + 1}`;
+          cfg_mic_device.appendChild(option);
+        });
+
+        if (previous && microphones.some(d => d.deviceId === previous)) {
+          cfg_mic_device.value = previous;
+        } else {
+          cfg_mic_device.value = '';
+        }
+        add_log('SYS', `麦克风设备: ${microphones.length} 个`);
+      } catch (err) {
+        add_log('ERR', '枚举麦克风失败', err.message);
+      }
+    }
+
+    cfg_mic_device.addEventListener('change', () => {
+      const selected = cfg_mic_device.options[cfg_mic_device.selectedIndex];
+      add_log('SYS', `选择麦克风: ${selected ? selected.textContent : 'System default'}`);
+    });
+    cfg_language.addEventListener('input', () => {
+      localStorage.setItem('asr_language', cfg_language.value);
+    });
+
+    function set_itn_status(text, color) {
+      cfg_itn_status.textContent = text;
+      cfg_itn_status.style.color = color;
+    }
+
+    function show_itn_unavailable(error) {
+      const errText = error ? String(error) : '';
+      const err = errText ? `: ${errText.slice(0, 32)}` : '';
+      const isMissingModule = errText.includes('No module named');
+      set_itn_status(
+        isMissingModule ? `请安装 WeTextProcessing${err}` : `初始化失败${err}`,
+        'var(--accent)'
+      );
+      show_itn_install_hint(errText);
+    }
+
+    function sync_itn_status_from_info(itn, show_error_banner = true) {
+      if (!cfg_itn_enabled.checked) {
+        set_itn_status('off', 'var(--text-disabled)');
+        return;
+      }
+      if (!itn) {
+        set_itn_status('checking', 'var(--warning)');
+        return;
+      }
+      if (itn.available === false) {
+        if (show_error_banner) {
+          show_itn_unavailable(itn.error || '');
+        } else {
+          const errText = itn.error ? String(itn.error) : '';
+          const err = errText ? `: ${errText.slice(0, 32)}` : '';
+          set_itn_status(`初始化失败${err}`, 'var(--accent)');
+        }
+        return;
+      }
+      set_itn_status('ready', 'var(--success)');
+    }
+
+    async function refresh_itn_status() {
+      if (!cfg_itn_enabled.checked) {
+        sync_itn_status_from_info(null);
+        return;
+      }
+      set_itn_status('checking', 'var(--warning)');
+      try {
+        const url = new URL(server_health_url);
+        url.searchParams.set('itn_warmup', '1');
+        const resp = await fetch(url.toString(), { cache: 'no-store' });
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        sync_itn_status_from_info(data.itn, true);
+      } catch (err) {
+        set_itn_status('unknown', 'var(--warning)');
+        add_log('SYS', `ITN 状态检查失败: ${err.message}`);
+      }
+    }
+
+    cfg_itn_enabled.addEventListener('change', () => {
+      if (!cfg_itn_enabled.checked) {
+        set_itn_status('off', 'var(--text-disabled)');
+        return;
+      }
+      refresh_itn_status();
+    });
+    sync_itn_status_from_info(null);
+
+    // 检查服务器健康状态
+    async function check_server_health() {
+      if (is_microphone_working) {
+        add_log('SYS', '录音中，跳过健康检查');
+        return;
+      }
+
+      server_status_dot.className = 'server-status-dot checking';
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        const resp = await fetch(server_health_url, {
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.ready) {
+            server_status_dot.className = 'server-status-dot online';
+            add_log('SYS', `服务器在线: ${current_server_config.name || current_server_config.host}`);
+          } else {
+            server_status_dot.className = 'server-status-dot checking';
+            add_log('SYS', `服务器加载中: ${data.stage || '...'}`);
+          }
+          if (cfg_itn_enabled.checked && data.itn) {
+            sync_itn_status_from_info(data.itn, false);
+          }
+        } else {
+          server_status_dot.className = 'server-status-dot offline';
+          add_log('SYS', `服务器响应异常: ${resp.status} (${server_health_url})`);
+        }
+      } catch (err) {
+        server_status_dot.className = 'server-status-dot offline';
+        if (err.name === 'AbortError') {
+          add_log('SYS', `服务器健康检查超时: ${server_health_url}`);
+        } else {
+          add_log('SYS', `服务器不可达: ${server_health_url} (${err.message})`);
+        }
+      }
+    }
+
+    // 页面加载时检查服务器状态
+    check_server_health();
+    refresh_microphone_devices();
+    // 每 30 秒自动检查一次（仅在未录音时）
+    setInterval(() => {
+      if (!is_microphone_working) {
+        check_server_health();
+      }
+    }, 30000);
+
+    ui_config_toggle.addEventListener('click', () => {
+      ui_config_panel.classList.toggle('open');
+      const isOpen = ui_config_panel.classList.contains('open');
+      ui_config_toggle.textContent = isOpen ? '-' : '+';
+      ui_config_toggle.classList.toggle('active', isOpen);
+    });
+    const cfg_history_rollback_row = document.getElementById('cfg_history_rollback_row');
+    function sync_history_rollback_state() {
+      const enabled = cfg_use_history.checked;
+      cfg_history_rollback_row.style.opacity = enabled ? '1' : '0.35';
+      cfg_history_rollback_strategy.disabled = !enabled;
+      cfg_history_rollback_value.disabled = !enabled;
+    }
+    cfg_use_history.addEventListener('change', () => {
+      cfg_history_label.textContent = cfg_use_history.checked ? '伪流式' : '非流式';
+      sync_history_rollback_state();
+    });
+    sync_history_rollback_state();
+
+    // 识别进行中锁定/解锁推理配置
+    function set_config_locked(locked) {
+      const els = [cfg_chunk_ms, cfg_user_prompt, cfg_context, cfg_language,
+                   cfg_itn_enabled, cfg_use_history,
+                   cfg_history_rollback_strategy, cfg_history_rollback_value, cfg_turn_detection,
+                   cfg_server_preset, cfg_custom_host, cfg_mic_device];
+      els.forEach(el => { el.disabled = locked; });
+      ui_config_toggle.style.pointerEvents = locked ? 'none' : '';
+      ui_config_toggle.style.opacity      = locked ? '0.4' : '';
+    }
+
+    function build_session_update_payload() {
+      const session_cfg = {};
+      const extra = {};
+
+      const user_prompt_val = cfg_user_prompt.value.trim();
+      if (user_prompt_val) {
+        extra.user_prompt = user_prompt_val;
+      }
+      const context_val = cfg_context.value.trim();
+      if (context_val) {
+        extra.context = context_val;
+      }
+      const language_val = cfg_language.value.trim();
+      if (language_val) {
+        extra.language = language_val;
+      }
+      extra.itn = { enabled: cfg_itn_enabled.checked };
+      const td_val = cfg_turn_detection.value;
+      if (td_val) {
+        session_cfg.audio = { input: { turn_detection: { type: td_val } } };
+      }
+
+      const chunk_val = parseInt(cfg_chunk_ms.value);
+      if (!isNaN(chunk_val) && chunk_val > 0) {
+        extra.chunk_ms = chunk_val;
+      }
+      if (!cfg_use_history.checked) {
+        extra.use_history = false;
+      }
+      const rb_strategy = cfg_history_rollback_strategy.value;
+      const rb_value = parseFloat(cfg_history_rollback_value.value);
+      if (rb_strategy !== 'none' && rb_value > 0) {
+        extra.history_rollback = { enabled: true, strategy: rb_strategy, value: rb_value };
+      }
+      if (Object.keys(extra).length > 0) {
+        session_cfg.extra = extra;
+      }
+      return Object.keys(session_cfg).length > 0 ? session_cfg : null;
+    }
+
+    function build_microphone_constraints() {
+      const audio_constraints = {
+        sampleRate: 16000,
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      };
+      const selected_device_id = cfg_mic_device.value;
+      if (selected_device_id) {
+        audio_constraints.deviceId = { exact: selected_device_id };
+      }
+      return { audio: audio_constraints };
+    }
+
+    function log_actual_microphone_track(stream) {
+      const track = stream.getAudioTracks()[0];
+      if (!track) {
+        add_log('ERR', '未获取到音频 track');
+        return;
+      }
+      const settings = track.getSettings ? track.getSettings() : {};
+      const selected = cfg_mic_device.options[cfg_mic_device.selectedIndex];
+      add_log('CFG', `请求麦克风 ${selected ? selected.textContent : 'System default'}`);
+      add_log('CFG', `实际麦克风 ${track.label || '(label unavailable)'}`);
+      add_log('CFG', `实际设置 sr=${settings.sampleRate || '?'} ch=${settings.channelCount || '?'} ec=${settings.echoCancellation ?? '?'} ns=${settings.noiseSuppression ?? '?'} agc=${settings.autoGainControl ?? '?'}`);
+      if (!cfg_mic_device.value && track.label) {
+        set_default_microphone_label(track.label);
+      }
+    }
+
+    // =========================================
+    // 运行状态与底层实例
+    // =========================================
+    let is_microphone_working = false;
+    let server_connection = null;     // WebSocket 连接
+
+    // 音频处理相关变量
+    let hardware_microphone_stream = null;
+    let audio_processor_engine = null;
+    let audio_capture_node = null;
+    let audio_sender_node = null;
+    let audio_gain_node = null;
+    let audio_analyser_node = null;
+    let waveform_req_id = null;
+    const waveform_bars = document.querySelectorAll('#audio_waveform .waveform-bar');
+
+    // 当前轮文本追踪（配合 server 的 cursor 协议实现精确回退）
+    let current_turn_text = "";
+    let current_turn_node = null;
+    let current_turn_div = null;
+    let turn_base_len = 0;   // 上一段完成后的累积长度，用于多段追加
+    let last_chunk_id = -1;  // 上一个 chunk_id，用于检测跨 chunk 历史回退（仅伪流式模式生效）
+    let current_session_block = null;
+
+    // 语种元数据（第三层级，贴在 session-block-header 右侧）
+    let current_lang_tag = null;     // 当前 header 内的语种标签元素
+    let current_turn_langs = [];     // 本轮已检测到的去重语种短码，按出现顺序
+
+    function short_lang(raw) {
+      const s = (raw || '').trim().toLowerCase();
+      if (!s) return '';
+      if (s.startsWith('chinese') || s.startsWith('zh') || s.startsWith('mandarin')) return 'ZH';
+      if (s.startsWith('english') || s.startsWith('en')) return 'EN';
+      if (s.startsWith('cantonese') || s.startsWith('yue')) return 'YUE';
+      return raw.trim().slice(0, 6).toUpperCase();
+    }
+
+    // 在指定 header 上重建语种标签。header.textContent 被改写后会清空子节点，
+    // 故每次改写后都需重新挂载，并按 current_turn_langs 还原显示。
+    function attach_lang_tag(headerEl) {
+      if (!headerEl) return;
+      current_lang_tag = document.createElement('span');
+      current_lang_tag.className = 'lang-tag';
+      headerEl.appendChild(current_lang_tag);
+      if (current_turn_langs.length) {
+        current_lang_tag.textContent = 'LANG ' + current_turn_langs.join(' · ');
+        current_lang_tag.style.display = '';
+      } else {
+        current_lang_tag.style.display = 'none';
+      }
+    }
+
+    // 记录某段检测到的语种，并刷新 header 右侧标签。
+    function note_detected_language(raw) {
+      const code = short_lang(raw);
+      if (!code) return;
+      if (!current_turn_langs.includes(code)) current_turn_langs.push(code);
+      if (current_lang_tag) {
+        current_lang_tag.textContent = 'LANG ' + current_turn_langs.join(' · ');
+        current_lang_tag.style.display = '';
+      }
+    }
+
+    const TRANSCRIPT_BOUNDARY_PUNCT = new Set('，。,.!?！？、；;：:…·—–');
+    function needsTranscriptBoundarySpace(left, right) {
+      if (!left || !right) return false;
+      if (/\s$/.test(left) || /^\s/.test(right)) return false;
+      const leftCh = left[left.length - 1];
+      const rightCh = right[0];
+      const leftAsciiAlnum = leftCh.charCodeAt(0) < 128 && /[0-9A-Za-z]/.test(leftCh);
+      const rightAsciiAlnum = rightCh.charCodeAt(0) < 128 && /[0-9A-Za-z]/.test(rightCh);
+      if (leftAsciiAlnum && rightAsciiAlnum) return true;
+      if (TRANSCRIPT_BOUNDARY_PUNCT.has(leftCh) && /[A-Za-z]/.test(rightCh)) return true;
+      if (leftCh.charCodeAt(0) > 0x2E80 && rightCh.charCodeAt(0) < 128 && /[A-Za-z]/.test(rightCh)) return true;
+      return false;
+    }
+    function mergeTranscriptBoundary(left, right) {
+      if (!left) return right;
+      if (!right) return left;
+      return needsTranscriptBoundarySpace(left, right) ? `${left} ${right}` : left + right;
+    }
+
+    function isNearScrollBottom(el, threshold = 24) {
+      return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+    }
+
+    function scrollToBottomIfFollowing(el, was_following) {
+      if (was_following) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+
+    // 实时识别区在容器顶部（active_area），历史段在其下方。识别时若把容器
+    // 滚到底部会显示历史、把正在识别的文本挤出视野；故应把活动区顶到可视区
+    // 顶部。仅当用户当前正停留在顶部（未手动下滑看历史）时才自动跟随。
+    function isViewingActiveArea(el, threshold = 24) {
+      return el.scrollTop <= threshold;
+    }
+
+    function scrollActiveAreaToTop(el, was_viewing) {
+      if (was_viewing) {
+        el.scrollTop = 0;
+      }
+    }
+
+    // 日志频率控制
+    let append_audio_count = 0;
+
+    // 预录制缓冲：getUserMedia 成功后立即开始录音，服务器就绪前缓存到此处
+    let pre_capture_chunks = [];
+    const MAX_PRE_CAPTURE_CHUNKS = 20;  // 20 × 256ms ≈ 5 秒
+
+    // 连接状态追踪
+    let has_ever_connected = false;
+    let is_engine_ready = false;
+    let is_audio_capturing = false;
+    let current_conn_id = 0;  // 每次新建连接自增，用于识别过期消息
+    let vad_turn_done_since_last_speech = false;
+    let last_vad_response_done_ms = 0;
+    let last_vad_speech_started_ms = 0;
+    const VAD_TAIL_SUPPRESS_MS = 500;
+
+    // 文件上传模式状态
+    let is_file_uploading = false;
+
+    // Session 编号计数器
+    let session_counter = 0;
+    let current_session_id = '';
+
+    // ----- 日志打印工具 -----
+    function add_log(type, action, details = "") {
+      const should_follow_log = isNearScrollBottom(ui_log_area);
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+
+      const logDiv = document.createElement('div');
+      logDiv.className = 'log-entry';
+
+      let typeClass = type === 'SEND' ? 'log-type-send' : 'log-type-recv';
+
+      logDiv.innerHTML = `<span class="log-time">${timeStr}</span><span class="${typeClass}">${type}</span> ${action} `;
+
+      // details 用 DOM 节点渲染（避免 HTML 注入），超长时 … 可点击展开/收起
+      const detailSpan = document.createElement('span');
+      detailSpan.style.color = 'var(--text-disabled)';
+      const LOG_DETAIL_LIMIT = 50;
+      if (details.length > LOG_DETAIL_LIMIT) {
+        const textNode = document.createTextNode(details.substring(0, LOG_DETAIL_LIMIT));
+        const toggle = document.createElement('span');
+        toggle.className = 'log-expand';
+        toggle.textContent = ' …';
+        toggle.title = '展开';
+        let expanded = false;
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          expanded = !expanded;
+          textNode.textContent = expanded ? details : details.substring(0, LOG_DETAIL_LIMIT);
+          toggle.textContent = expanded ? ' ⤴' : ' …';
+          toggle.title = expanded ? '收起' : '展开';
+        });
+        detailSpan.appendChild(textNode);
+        detailSpan.appendChild(toggle);
+      } else {
+        detailSpan.textContent = details;
+      }
+      logDiv.appendChild(detailSpan);
+
+      ui_log_area.appendChild(logDiv);
+
+      if (ui_log_area.children.length > 500) {
+        ui_log_area.removeChild(ui_log_area.firstChild);
+      }
+      scrollToBottomIfFollowing(ui_log_area, should_follow_log);
+    }
+
+    // ----- UI 状态更新工具 -----
+    function update_ui_status(status, text) {
+      ui_status_text.innerText = text;
+      ui_indicator_dot.className = 'indicator-dot ' + status;
+    }
+
+    // ----- 在识别结果区显示错误提示 -----
+    function show_error_in_result_area(title, detail) {
+      const existing = document.getElementById('error_banner');
+      if (existing) existing.remove();
+
+      const banner = document.createElement('div');
+      banner.id = 'error_banner';
+      banner.className = 'error-banner';
+      banner.innerHTML = `
+        <div class="error-banner-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div>
+          <div class="error-banner-title">[ERROR] ${title}</div>
+          <div class="error-banner-detail">${detail}</div>
+        </div>
+      `;
+      ui_active_area.innerHTML = '';
+      ui_active_area.appendChild(banner);
+    }
+
+    function show_itn_install_hint(error) {
+      const reason = error ? `\n当前错误: ${error}` : '';
+      const isMissingModule = error && String(error).includes('No module named');
+      const title = isMissingModule ? 'ITN 书面化依赖未安装' : 'ITN 书面化初始化失败';
+      const action = isMissingModule
+        ? `\n\n请在启动 ASR 服务的 Python/conda 环境中安装:\npip install WeTextProcessing -i http://pypi.hobot.cc/hobot-local/simple --extra-index-url=http://mirrors.aliyun.com/pypi/simple/ --trusted-host pypi.hobot.cc --trusted-host mirrors.aliyun.com\n\n安装后重启 serve_touch_asr 服务。`
+        : '\n\n请检查服务日志中的 ITN 初始化错误；当前识别会继续使用原始文本。';
+      show_error_in_result_area(
+        title,
+        `当前服务环境无法加载 WeTextProcessing，ITN 书面化已自动降级为原始识别文本。${reason}${action}`
+      );
+    }
+
+    // ----- 按钮点击事件 -----
+    ui_button.addEventListener('click', async () => {
+      if (!is_microphone_working) {
+        await start_microphone_and_connect_server();
+      } else {
+        stop_microphone_and_finish_turn();
+      }
+    });
+
+    // ----- 核心动作：开启麦克风 & 连接服务器 -----
+    async function start_microphone_and_connect_server() {
+      ui_button.disabled = true;
+      ui_button.style.opacity = '0.5';
+      ui_button.style.cursor = 'not-allowed';
+      ui_button.innerText = 'CONNECTING...';
+      set_config_locked(true);
+      try {
+        if (server_connection) {
+          server_connection.onclose = null;
+          server_connection.onerror = null;
+          server_connection.onmessage = null;
+          if (server_connection.readyState === WebSocket.OPEN || server_connection.readyState === WebSocket.CONNECTING) {
+            try {
+              server_connection.close(1000, 'Starting new session');
+            } catch (e) {}
+          }
+          server_connection = null;
+        }
+
+        add_log('SYS', '请求麦克风权限...');
+        hardware_microphone_stream = await navigator.mediaDevices.getUserMedia(build_microphone_constraints());
+        add_log('SYS', '麦克风权限获取成功');
+        log_actual_microphone_track(hardware_microphone_stream);
+        refresh_microphone_devices();
+
+        if (!audio_processor_engine || audio_processor_engine.state === 'closed') {
+          audio_processor_engine = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TARGET_SAMPLE_RATE });
+        }
+        if (audio_processor_engine.state === 'suspended') {
+          await audio_processor_engine.resume();
+        }
+        add_log('SYS', `AudioContext ready (state=${audio_processor_engine.state})`);
+
+        pre_capture_chunks = [];
+        begin_capture_and_send_audio();
+        add_log('SYS', '预录制已启动');
+
+        add_log('SYS', '检查模型就绪状态...');
+        await poll_health_until_ready();
+        add_log('SYS', '模型已就绪');
+
+        add_log('SYS', `连接 WebSocket: ${server_websocket_url}`);
+        current_conn_id++;
+        const my_conn_id = current_conn_id;
+        server_connection = new WebSocket(server_websocket_url);
+
+        server_connection.onopen = () => {
+          has_ever_connected = true;
+          is_engine_ready = false;
+          is_audio_capturing = false;
+          vad_turn_done_since_last_speech = false;
+          last_vad_response_done_ms = 0;
+          last_vad_speech_started_ms = 0;
+          const old_error = document.getElementById('error_banner');
+          if (old_error) old_error.remove();
+
+          update_ui_status('active', 'CONNECTED');
+          ui_button.innerText = 'CONNECTING...';
+          is_microphone_working = true;
+          add_log('SYS', `WebSocket 连接成功: ${current_server_config.name || current_server_config.host}:${current_server_config.port}`);
+          append_audio_count = 0;
+
+          // 打印所有前端配置
+          add_log('CFG', `服务器 ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})`);
+          add_log('CFG', `分块间隔 ${cfg_chunk_ms.value} 毫秒`);
+          add_log('CFG', cfg_user_prompt.value ? `用户提示词「${cfg_user_prompt.value}」` : '未设置用户提示词');
+          add_log('CFG', cfg_context.value ? `上下文「${cfg_context.value}」` : '未设置上下文');
+          add_log('CFG', cfg_language.value ? `强制语种 ${cfg_language.value}` : '未设置强制语种');
+          add_log('CFG', cfg_itn_enabled.checked ? 'ITN 书面化已启用' : 'ITN 书面化未启用');
+          add_log('CFG', cfg_use_history.checked ? '伪流式（使用历史上下文，支持回退）' : '非流式（不使用历史上下文）');
+          const rb = cfg_history_rollback_strategy.value;
+          const rv = cfg_history_rollback_value.value;
+          if (rb === 'none') {
+            add_log('CFG', '未启用回退');
+          } else if (rb === 'ratio') {
+            add_log('CFG', `按比例回退，回退比例为 ${rv}`);
+          } else if (rb === 'chars') {
+            add_log('CFG', `按字符数回退，回退数量为 ${rv} 字符`);
+          } else if (rb === 'words') {
+            add_log('CFG', `按词数回退，回退数量为 ${rv} 词（英文按空格，中文按结巴）`);
+          } else if (rb === 'tokens') {
+            add_log('CFG', `按 token 数回退，回退数量为 ${rv} token`);
+          } else {
+            add_log('CFG', `回退策略 ${rb}，参数 ${rv}`);
+          }
+          add_log('CFG', cfg_turn_detection.value === 'server_vad' ? '说话检测使用 VAD' : '说话检测不使用 VAD');
+        };
+
+        server_connection.onmessage = (event) => {
+          if (my_conn_id !== current_conn_id) return;
+          on_receive_message_from_server(event);
+        };
+
+        server_connection.onerror = (err) => {
+          add_log('SYS', `WebSocket 连接出错: ${current_server_config.host}:${current_server_config.port}`);
+          if (!has_ever_connected) {
+            update_ui_status('error', 'CONNECTION FAILED');
+            show_error_in_result_area(
+              '无法连接到识别服务',
+              `服务器: ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})\n地址: ${server_websocket_url}\n请检查服务是否已启动，或切换到其他服务器。`
+            );
+          } else {
+            update_ui_status('error', 'CONNECTION LOST');
+            show_error_in_result_area('连接异常中断', '与识别服务的连接意外断开，请重试');
+          }
+          stop_microphone_and_finish_turn();
+        };
+
+        server_connection.onclose = (event) => {
+          add_log('SYS', `WebSocket closed (code=${event.code})`);
+          if (!has_ever_connected) {
+            update_ui_status('error', 'UNAVAILABLE');
+            show_error_in_result_area(
+              '识别服务不可用',
+              `服务器: ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})\nWebSocket 连接被拒绝，请确认服务已启动或切换到其他服务器。`
+            );
+          } else {
+            update_ui_status('', 'DISCONNECTED');
+          }
+          if (is_microphone_working) stop_microphone_and_finish_turn();
+          has_ever_connected = false;
+        };
+
+      } catch (error) {
+        add_log('ERR', '启动失败', error.message);
+        if (audio_sender_node) { audio_sender_node.disconnect(); audio_sender_node.onaudioprocess = null; audio_sender_node = null; }
+        if (audio_gain_node) { audio_gain_node.disconnect(); audio_gain_node = null; }
+        if (audio_capture_node) { audio_capture_node.disconnect(); audio_capture_node = null; }
+        if (hardware_microphone_stream) { hardware_microphone_stream.getTracks().forEach(t => t.stop()); hardware_microphone_stream = null; }
+        pre_capture_chunks = [];
+        const is_mic_error = error.name === 'NotAllowedError' || error.name === 'NotFoundError' || error.message.includes('麦克风');
+        const msg = is_mic_error
+          ? '无法获取麦克风，请检查浏览器权限\n' + error.message
+          : '连接失败：' + error.message;
+        show_error_in_result_area('启动失败', msg);
+        update_ui_status('error', 'ERROR');
+        ui_button.disabled = false;
+        ui_button.style.opacity = '';
+        ui_button.style.cursor = '';
+        ui_button.innerText = 'START';
+        set_config_locked(false);
+      }
+    }
+
+    // ----- 核心动作：停止收音 & 提交结算 -----
+    function stop_microphone_and_finish_turn() {
+      stop_waveform_animation();
+
+      const skip_commit_after_vad_done = (
+        cfg_turn_detection.value === 'server_vad'
+        && (
+          vad_turn_done_since_last_speech
+          || (
+            last_vad_response_done_ms > 0
+            && last_vad_speech_started_ms > last_vad_response_done_ms
+            && Date.now() - last_vad_speech_started_ms < VAD_TAIL_SUPPRESS_MS
+          )
+        )
+      );
+
+      if (server_connection && server_connection.readyState === WebSocket.OPEN && !skip_commit_after_vad_done) {
+        add_log('SEND', 'input_audio_buffer.commit');
+        server_connection.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+      } else if (skip_commit_after_vad_done) {
+        add_log('SYS', 'VAD 已完成当前轮，STOP 不再重复 commit');
+      }
+
+      const conn_to_close = server_connection;
+      const closing_conn_id = current_conn_id;
+      let connection_closed = false;
+
+      if (conn_to_close) {
+        conn_to_close.onopen = null;
+        conn_to_close.onerror = null;
+
+        const original_onclose = conn_to_close.onclose;
+        conn_to_close.onclose = (event) => {
+          if (!connection_closed) {
+            connection_closed = true;
+            add_log('SYS', `连接已关闭 (code=${event.code})`);
+          }
+        };
+
+        const original_onmessage = conn_to_close.onmessage;
+
+        conn_to_close.onmessage = (event) => {
+          if (current_conn_id !== closing_conn_id) return;
+
+          if (original_onmessage) {
+            original_onmessage(event);
+          }
+
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'response.done') {
+              setTimeout(() => {
+                if (!connection_closed && conn_to_close.readyState === WebSocket.OPEN) {
+                  connection_closed = true;
+                  conn_to_close.onmessage = null;
+                  try {
+                    conn_to_close.close(1000, 'Normal closure');
+                    add_log('SYS', '收到 response.done，关闭连接');
+                  } catch (e) {}
+                }
+              }, 100);
+            }
+          } catch (e) {}
+        };
+
+        if (skip_commit_after_vad_done) {
+          setTimeout(() => {
+            if (!connection_closed && conn_to_close.readyState === WebSocket.OPEN) {
+              connection_closed = true;
+              conn_to_close.onmessage = null;
+              try {
+                conn_to_close.close(1000, 'VAD turn already done');
+                add_log('SYS', 'VAD 已完成，关闭连接');
+              } catch (e) {}
+            }
+          }, 100);
+        }
+
+        const check_interval = setInterval(() => {
+          if (current_conn_id !== closing_conn_id) {
+            clearInterval(check_interval);
+            if (!connection_closed && (conn_to_close.readyState === WebSocket.OPEN || conn_to_close.readyState === WebSocket.CONNECTING)) {
+              connection_closed = true;
+              conn_to_close.onmessage = null;
+              try {
+                conn_to_close.close(1000, 'New session started');
+              } catch (e) {}
+            }
+          }
+        }, 100);
+        setTimeout(() => clearInterval(check_interval), 1600);
+      }
+      server_connection = null;
+
+      pre_capture_chunks = [];
+      if (audio_sender_node) { audio_sender_node.disconnect(); audio_sender_node.onaudioprocess = null; audio_sender_node = null; }
+      if (audio_gain_node) { audio_gain_node.disconnect(); audio_gain_node = null; }
+      if (audio_capture_node) { audio_capture_node.disconnect(); audio_capture_node = null; }
+      if (hardware_microphone_stream) { hardware_microphone_stream.getTracks().forEach(track => track.stop()); hardware_microphone_stream = null; }
+
+      is_microphone_working = false;
+      is_audio_capturing = false;
+      is_engine_ready = false;
+      ui_button.innerText = 'START';
+      ui_button.disabled = false;
+      ui_button.style.opacity = '';
+      ui_button.style.cursor = '';
+      ui_button.classList.remove('is-working');
+      update_ui_status('active', 'READY');
+      ui_cursor.style.display = 'none';
+      if (current_session_block) {
+        current_session_block.classList.remove('active');
+        // 将完成的 session 移到历史区顶部（最新的在最上面）
+        ui_history_area.insertBefore(current_session_block, ui_history_area.firstChild);
+        ui_history_label.style.display = '';
+      }
+      ui_active_area.innerHTML = '';
+      set_config_locked(false);
+      sync_history_rollback_state();
+      add_log('SYS', '已停止收音');
+    }
+
+    // ----- 当确认模型就绪后，正式开始采集音频 -----
+    function activate_audio_capture() {
+      if (is_audio_capturing) {
+        add_log('SYS', 'activate_audio_capture 已在采集中, 跳过');
+        return;
+      }
+      add_log('SYS', 'activate_audio_capture 启动');
+      is_audio_capturing = true;
+      is_engine_ready = true;
+
+      const old_loading = document.getElementById('loading_banner');
+      if (old_loading) old_loading.remove();
+
+      update_ui_status('active', 'RECORDING');
+      ui_button.innerText = 'STOP';
+      ui_button.disabled = false;
+      ui_button.style.opacity = '';
+      ui_button.style.cursor = '';
+      ui_button.classList.add('is-working');
+
+      session_counter++;
+      const now = new Date();
+      const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+      current_session_block = document.createElement('div');
+      current_session_block.className = 'session-block active';
+      const header = document.createElement('div');
+      header.className = 'session-block-header';
+      header.textContent = `${ts}  ${current_session_id || '#' + session_counter}`;
+      current_turn_langs = [];
+      attach_lang_tag(header);
+      current_session_block.appendChild(header);
+
+      // 放入 active_area（顶部区域）
+      ui_active_area.innerHTML = '';
+      ui_active_area.appendChild(current_session_block);
+      ui_active_area.appendChild(ui_cursor);
+      // 新一段开始：把视图顶到活动区，避免被上一段遗留的滚动位置遮挡
+      ui_text_box.scrollTop = 0;
+
+      // 创建本次 session 的唯一一个 turn-line，整个 session 只有一段
+      current_turn_text = "";
+      turn_base_len = 0;
+      last_chunk_id = -1;
+      current_turn_div = document.createElement('div');
+      current_turn_div.className = 'turn-line';
+      current_turn_node = document.createTextNode("");
+      current_turn_div.appendChild(current_turn_node);
+      current_session_block.appendChild(current_turn_div);
+      ui_cursor.style.display = 'inline-block';
+      current_turn_div.appendChild(ui_cursor);
+      if (!audio_sender_node) {
+        add_log('SYS', 'ScriptProcessor 未创建，降级重试');
+        begin_capture_and_send_audio();
+      }
+    }
+
+    function syncSessionConfigFromServer(sess) {
+      const extra = sess.extra || {};
+      if (extra.user_prompt && !cfg_user_prompt.value.trim()) {
+        cfg_user_prompt.value = extra.user_prompt;
+      }
+      if (extra.context && !cfg_context.value.trim()) {
+        cfg_context.value = extra.context;
+      }
+      if (extra.language && !cfg_language.value.trim()) {
+        cfg_language.value = extra.language;
+      }
+      const itn = extra.itn || {};
+      if (itn.enabled !== undefined) {
+        cfg_itn_enabled.checked = Boolean(itn.enabled);
+      }
+      sync_itn_status_from_info(itn, true);
+      if (extra.chunk_ms && !cfg_chunk_ms.value) {
+        cfg_chunk_ms.value = extra.chunk_ms;
+      }
+    }
+
+    // ----- 底层：接收服务器发来的文字 -----
+    function on_receive_message_from_server(event) {
+      const server_data = JSON.parse(event.data);
+
+      if (server_data.type === 'session.created') {
+        const sess = server_data.session || {};
+        const sid = sess.id || '';
+        current_session_id = sid;
+        const extra = sess.extra || {};
+        const td = sess.audio?.input?.turn_detection || {};
+
+        const itnSummary = extra.itn?.available === false ? 'itn=unavailable' : `itn=${extra.itn?.enabled ? 'on' : 'off'}`;
+        const summary = `td=${td.type || '?'} chunk=${extra.chunk_ms || '?'} history=${extra.use_history ?? '?'} ${itnSummary} history_rollback=${extra.history_rollback?.strategy || 'none'}/${extra.history_rollback?.value || 0}`;
+        add_log('RECV', 'session.created', `${sid} ${summary}`);
+
+        // 更新 session block header，用服务器分配的 session ID
+        if (current_session_block) {
+          const header = current_session_block.querySelector('.session-block-header');
+          if (header) {
+            const now = new Date();
+            const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+            header.textContent = `${ts}  ${sid}`;
+            attach_lang_tag(header);
+          }
+        }
+
+        const sess_update = build_session_update_payload();
+        if (sess_update && server_connection && server_connection.readyState === WebSocket.OPEN) {
+          server_connection.send(JSON.stringify({ type: 'session.update', session: sess_update }));
+          add_log('SEND', 'session.update', JSON.stringify(sess_update));
+        }
+
+        setTimeout(() => {
+          if (!is_audio_capturing && is_microphone_working) {
+            activate_audio_capture();
+          }
+        }, 200);
+        return;
+      }
+
+      if (server_data.type === 'session.updated') {
+        const sess = server_data.session || {};
+        const extra = sess.extra || {};
+        syncSessionConfigFromServer(sess);
+        const itnSummary = extra.itn?.available === false ? 'itn=unavailable' : `itn=${extra.itn?.enabled ? 'on' : 'off'}`;
+        add_log('RECV', 'session.updated', itnSummary);
+        return;
+      }
+
+      function ensure_turn_line() {
+        if (current_turn_node) return;
+        current_turn_text = "";
+        current_turn_div = document.createElement('div');
+        current_turn_div.className = 'turn-line';
+        current_turn_node = document.createTextNode("");
+        current_turn_div.appendChild(current_turn_node);
+        const container = current_session_block || ui_text_box;
+        container.appendChild(current_turn_div);
+        ui_cursor.style.display = 'inline-block';
+        if (current_turn_div) current_turn_div.appendChild(ui_cursor);
+      }
+
+      if (server_data.type === 'input_audio_buffer.speech_started') {
+        const ms = server_data.audio_start_ms || 0;
+        last_vad_speech_started_ms = Date.now();
+        if (last_vad_response_done_ms === 0 || last_vad_speech_started_ms - last_vad_response_done_ms >= VAD_TAIL_SUPPRESS_MS) {
+          vad_turn_done_since_last_speech = false;
+        }
+        add_log('RECV', 'speech_started', `${ms}ms`);
+        update_ui_status('active', `SPEECH DETECTED (${ms}ms)`);
+        return;
+      }
+
+      if (server_data.type === 'input_audio_buffer.speech_stopped') {
+        const ms = server_data.audio_end_ms || 0;
+        add_log('RECV', 'speech_stopped', `${ms}ms`);
+        update_ui_status('active', `SPEECH ENDED (${ms}ms)`);
+        return;
+      }
+
+      if (server_data.type === 'input_audio_buffer.committed') {
+        add_log('RECV', 'committed', server_data.item_id || '');
+        return;
+      }
+
+      if (server_data.type === 'conversation.item.input_audio_transcription.delta') {
+        const should_follow_transcript = isViewingActiveArea(ui_text_box);
+        const cursor = server_data.cursor !== undefined ? server_data.cursor : 0;
+        const delta = server_data.delta || "";
+        const cid = server_data.chunk_id !== undefined ? server_data.chunk_id : -1;
+        const cidLabel = cid >= 0 ? `#${cid}` : '';
+
+        // 检测跨 Chunk 历史回退（仅伪流式模式）：新 chunk 的 cursor 小于当前段已显示长度
+        const current_seg_len = current_turn_text.length - turn_base_len;
+        const is_history_rollback = (cid >= 0 && cid !== last_chunk_id && cursor < current_seg_len);
+        last_chunk_id = cid;
+
+        if (!delta) {
+          // 协议语义：空 delta 只表示状态确认；只有 rollback 才允许截断显示文本。
+          if (is_history_rollback) {
+            current_turn_text = current_turn_text.slice(0, turn_base_len + cursor);
+          }
+        } else if (cursor === 0 && turn_base_len > 0) {
+          // 新语音段从 cursor=0 开始，接在上一段 completed 后的展示文本后面。
+          const prefix = current_turn_text.slice(0, turn_base_len);
+          current_turn_text = mergeTranscriptBoundary(prefix, delta);
+        } else {
+          // 同一段内的正常流式 delta（含 chunk 内 history_rollback）
+          current_turn_text = current_turn_text.slice(0, turn_base_len + cursor) + delta;
+        }
+
+        note_detected_language(server_data.language);
+        const langLabel = server_data.language ? ` lang=${server_data.language}` : '';
+        if (is_history_rollback) {
+          add_log('RECV', `delta${cidLabel} (history_rollback)`, `cursor=${cursor} ctext="${current_turn_text}"${langLabel}`);
+        } else {
+          add_log('RECV', `delta${cidLabel}`, `cursor=${cursor} ctext="${current_turn_text}"${langLabel}`);
+        }
+        current_turn_node.textContent = current_turn_text;
+        scrollActiveAreaToTop(ui_text_box, should_follow_transcript);
+      }
+      else if (server_data.type === 'conversation.item.input_audio_transcription.completed') {
+        const should_follow_transcript = isViewingActiveArea(ui_text_box);
+        const segTranscript = server_data.transcript || '';
+        note_detected_language(server_data.language);
+        const completedLang = server_data.language ? ` [lang=${server_data.language}]` : '';
+        add_log('RECV', 'transcription.completed', `${segTranscript}${completedLang}`);
+        if (segTranscript) {
+          const prefix = current_turn_text.slice(0, turn_base_len);
+          current_turn_text = mergeTranscriptBoundary(prefix, segTranscript);
+          current_turn_node.textContent = current_turn_text;
+          scrollActiveAreaToTop(ui_text_box, should_follow_transcript);
+        }
+        // 记录当前段完成后的累积长度，下一段的 delta 会从这个位置之后追加
+        turn_base_len = current_turn_text.length;
+        if (is_microphone_working) {
+          update_ui_status('active', 'RECORDING');
+        }
+      } else if (server_data.type === 'response.done') {
+        if (cfg_turn_detection.value === 'server_vad') {
+          vad_turn_done_since_last_speech = true;
+          last_vad_response_done_ms = Date.now();
+        }
+        // 一轮结束：清空本轮语种累积，下一轮 delta 会重新填充，
+        // 标签文本暂时保留，待新语种到达再覆盖，避免闪空。
+        current_turn_langs = [];
+        add_log('RECV', server_data.type, "");
+      } else {
+        add_log('RECV', server_data.type, "");
+      }
+    }
+
+    // ----- 在识别结果区显示模型加载进度 -----
+    function show_loading_in_result_area(stage) {
+      let banner = document.getElementById('loading_banner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'loading_banner';
+        banner.className = 'loading-banner';
+        ui_active_area.appendChild(banner);
+      }
+      banner.innerHTML = `
+        <div class="loading-banner-spinner"></div>
+        <div>
+          <div class="loading-banner-title">[LOADING]</div>
+          <div class="loading-banner-stage">${stage}</div>
+        </div>
+      `;
+    }
+
+    // ----- 底层：将麦克风声音切片并发送 -----
+    const TARGET_SAMPLE_RATE = 16000;
+
+    function begin_capture_and_send_audio() {
+      if (audio_sender_node) {
+        add_log('SYS', 'ScriptProcessor 已存在，跳过');
+        return;
+      }
+      add_log('SYS', '初始化音频采集...');
+
+      if (!hardware_microphone_stream || hardware_microphone_stream.getTracks().every(t => t.readyState === 'ended')) {
+        add_log('ERR', '麦克风流已失效');
+        return;
+      }
+
+      if (!audio_processor_engine || audio_processor_engine.state === 'closed') {
+        add_log('ERR', 'AudioContext 不可用');
+        return;
+      }
+      if (audio_processor_engine.state === 'suspended') {
+        audio_processor_engine.resume().catch(e => add_log('ERR', 'AudioContext resume 失败: ' + e.message));
+      }
+
+      const actual_sr = audio_processor_engine.sampleRate;
+      const need_resample = actual_sr !== TARGET_SAMPLE_RATE;
+      const resample_ratio = need_resample ? TARGET_SAMPLE_RATE / actual_sr : 1;
+
+      if (need_resample) {
+        add_log('SYS', `重采样: ${actual_sr}Hz -> ${TARGET_SAMPLE_RATE}Hz`);
+      }
+
+      audio_capture_node = audio_processor_engine.createMediaStreamSource(hardware_microphone_stream);
+      audio_sender_node = audio_processor_engine.createScriptProcessor(4096, 1, 1);
+
+      audio_sender_node.onaudioprocess = (event) => {
+        let raw_float_audio = event.inputBuffer.getChannelData(0);
+
+        if (need_resample) {
+          raw_float_audio = resample_linear(raw_float_audio, actual_sr, TARGET_SAMPLE_RATE);
+        }
+
+        const pcm16_audio = convert_float_to_pcm16(raw_float_audio);
+
+        if (!is_audio_capturing) {
+          pre_capture_chunks.push(pcm16_audio.buffer.slice(0));
+          if (pre_capture_chunks.length > MAX_PRE_CAPTURE_CHUNKS) {
+            pre_capture_chunks.shift();
+          }
+          return;
+        }
+
+        if (!server_connection || server_connection.readyState !== WebSocket.OPEN) return;
+
+        if (pre_capture_chunks.length > 0) {
+          const history = pre_capture_chunks.splice(0);
+          add_log('SYS', `补发预录制: ${history.length} 帧`);
+          for (const chunk of history) {
+            server_connection.send(chunk);
+            append_audio_count++;
+          }
+        }
+
+        append_audio_count++;
+        if (append_audio_count === 1) {
+          add_log('SYS', `首帧: ${pcm16_audio.length} samples (${(pcm16_audio.length/TARGET_SAMPLE_RATE*1000).toFixed(0)}ms)`);
+        }
+        if (append_audio_count % 30 === 0) {
+          add_log('SEND', 'audio', `${append_audio_count} chunks sent`);
+        }
+
+        server_connection.send(pcm16_audio.buffer);
+      };
+
+      audio_gain_node = audio_processor_engine.createGain();
+      audio_gain_node.gain.value = 0;
+
+      audio_analyser_node = audio_processor_engine.createAnalyser();
+      audio_analyser_node.fftSize = 64; // 32 bins
+      audio_analyser_node.smoothingTimeConstant = 0.5; // Nothing设计：更少的平滑，更机械的敲击感
+
+      audio_capture_node.connect(audio_analyser_node);
+      audio_capture_node.connect(audio_sender_node);
+      audio_sender_node.connect(audio_gain_node);
+      audio_gain_node.connect(audio_processor_engine.destination);
+
+      start_waveform_animation();
+    }
+
+    function start_waveform_animation() {
+      if (waveform_req_id) cancelAnimationFrame(waveform_req_id);
+      const container = document.getElementById('audio_waveform');
+      if (container) container.style.opacity = '1';
+
+      const dataArray = new Uint8Array(audio_analyser_node.frequencyBinCount);
+
+      function draw() {
+        if (!is_audio_capturing || !audio_analyser_node) {
+          waveform_bars.forEach(b => b.style.height = '2px');
+          if (audio_analyser_node) waveform_req_id = requestAnimationFrame(draw);
+          return;
+        }
+        audio_analyser_node.getByteFrequencyData(dataArray);
+
+        // 共 8 个柱体，间隔取低频到中频的数据
+        for (let i = 0; i < waveform_bars.length; i++) {
+          const val = dataArray[i * 2] / 255.0; // 0.0 ~ 1.0
+          const height = Math.max(2, val * 16); // 最大 16px
+          waveform_bars[i].style.height = height + 'px';
+        }
+        waveform_req_id = requestAnimationFrame(draw);
+      }
+      draw();
+    }
+
+    function stop_waveform_animation() {
+      if (waveform_req_id) {
+        cancelAnimationFrame(waveform_req_id);
+        waveform_req_id = null;
+      }
+      const container = document.getElementById('audio_waveform');
+      if (container) container.style.opacity = '0.3';
+      waveform_bars.forEach(b => b.style.height = '2px');
+    }
+
+    // ----- 底层工具：音频格式转换 -----
+
+    /** 线性插值重采样 */
+    function resample_linear(input_float32, from_sr, to_sr) {
+      if (from_sr === to_sr) return input_float32;
+      const ratio = from_sr / to_sr;
+      const out_len = Math.round(input_float32.length / ratio);
+      const output = new Float32Array(out_len);
+      for (let i = 0; i < out_len; i++) {
+        const src_idx = i * ratio;
+        const idx0 = Math.floor(src_idx);
+        const idx1 = Math.min(idx0 + 1, input_float32.length - 1);
+        const frac = src_idx - idx0;
+        output[i] = input_float32[idx0] * (1 - frac) + input_float32[idx1] * frac;
+      }
+      return output;
+    }
+
+    /** Float32 [-1,1] → PCM16 Int16Array */
+    function convert_float_to_pcm16(float_array) {
+      const int16_array = new Int16Array(float_array.length);
+      for (let i = 0; i < float_array.length; i++) {
+        const clamped = Math.max(-1, Math.min(1, float_array[i]));
+        int16_array[i] = clamped < 0 ? clamped * 32768 : clamped * 32767;
+      }
+      return int16_array;
+    }
+
+    // =========================================
+    // 文件上传模式：选择音频文件 → 解码 → 重采样 16kHz → 分包发送
+    // =========================================
+    ui_upload_button.addEventListener('click', () => {
+      if (is_file_uploading || is_microphone_working) return;
+      ui_file_input.click();
+    });
+
+    ui_file_input.addEventListener('change', async (evt) => {
+      const file = evt.target.files[0];
+      if (!file) return;
+      ui_file_input.value = '';
+      await upload_and_transcribe_file(file);
+    });
+
+    async function upload_and_transcribe_file(file) {
+      if (is_file_uploading || is_microphone_working) return;
+      is_file_uploading = true;
+
+      ui_upload_button.innerText = 'SENDING...';
+      ui_upload_button.classList.add('is-sending');
+      ui_upload_button.disabled = true;
+      ui_button.disabled = true;
+      ui_button.style.opacity = '0.5';
+
+      const fname = file.name;
+      const PACKET_MS = 100;
+      const packet_samples = Math.floor(TARGET_SAMPLE_RATE * PACKET_MS / 1000);
+
+      add_log('SYS', `上传: ${fname} (${(file.size/1024).toFixed(1)}KB)`);
+
+      try {
+        const array_buffer = await file.arrayBuffer();
+
+        const decode_ctx = new (window.AudioContext || window.webkitAudioContext)();
+        let audio_buffer;
+        try {
+          audio_buffer = await decode_ctx.decodeAudioData(array_buffer);
+        } catch (e) {
+          add_log('ERR', '音频解码失败', e.message);
+          alert(`无法解码: "${fname}": ${e.message}`);
+          reset_upload_ui();
+          decode_ctx.close();
+          return;
+        }
+        decode_ctx.close();
+
+        const original_sr = audio_buffer.sampleRate;
+        const original_len = audio_buffer.length;
+        let mono_16k;
+
+        if (original_sr === TARGET_SAMPLE_RATE && audio_buffer.numberOfChannels === 1) {
+          mono_16k = audio_buffer.getChannelData(0);
+        } else {
+          const target_len = Math.round(original_len * TARGET_SAMPLE_RATE / original_sr);
+          const offline_ctx = new OfflineAudioContext(1, target_len, TARGET_SAMPLE_RATE);
+          const source = offline_ctx.createBufferSource();
+          source.buffer = audio_buffer;
+          source.connect(offline_ctx.destination);
+          source.start(0);
+          const rendered = await offline_ctx.startRendering();
+          mono_16k = rendered.getChannelData(0);
+        }
+
+        const duration_sec = mono_16k.length / TARGET_SAMPLE_RATE;
+        add_log('SYS', `解码: ${original_sr}Hz -> ${TARGET_SAMPLE_RATE}Hz, ${duration_sec.toFixed(2)}s`);
+
+        const pcm16 = convert_float_to_pcm16(mono_16k);
+
+        const packets = [];
+        for (let start = 0; start < pcm16.length; start += packet_samples) {
+          const end = Math.min(start + packet_samples, pcm16.length);
+          packets.push(pcm16.slice(start, end));
+        }
+
+        add_log('SYS', `分包: ${packets.length} x ${PACKET_MS}ms`);
+
+        add_log('SYS', '检查模型就绪状态...');
+        await poll_health_until_ready();
+        add_log('SYS', '模型已就绪');
+
+        const ws = new WebSocket(server_websocket_url);
+        update_ui_status('active', 'UPLOADING');
+
+        const ws_ready = new Promise((resolve, reject) => {
+          ws.onopen = () => resolve();
+          ws.onerror = () => reject(new Error('WebSocket 连接失败'));
+          setTimeout(() => reject(new Error('WebSocket 连接超时')), 10000);
+        });
+
+        await ws_ready;
+        add_log('SYS', `文件模式: WebSocket 已连接 (${current_server_config.name || current_server_config.host}:${current_server_config.port})`);
+
+        let file_session_id = '';
+        const ready_promise = new Promise((resolve) => {
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'session.created') {
+              file_session_id = data.session?.id || '';
+              add_log('RECV', 'session.created', file_session_id);
+              const sess_update = build_session_update_payload();
+              if (sess_update) {
+                ws.send(JSON.stringify({ type: 'session.update', session: sess_update }));
+                add_log('SEND', 'session.update', JSON.stringify(sess_update));
+              }
+
+              // 打印所有前端配置（同麦克风连接）
+              add_log('CFG', `服务器 ${current_server_config.name || 'Custom'} (${current_server_config.host}:${current_server_config.port})`);
+              add_log('CFG', `分块间隔 ${cfg_chunk_ms.value} 毫秒`);
+              add_log('CFG', cfg_user_prompt.value ? `用户提示词「${cfg_user_prompt.value}」` : '未设置用户提示词');
+              add_log('CFG', cfg_context.value ? `上下文「${cfg_context.value}」` : '未设置上下文');
+              add_log('CFG', cfg_language.value ? `强制语种 ${cfg_language.value}` : '未设置强制语种');
+              add_log('CFG', cfg_itn_enabled.checked ? 'ITN 书面化已启用' : 'ITN 书面化未启用');
+              add_log('CFG', cfg_use_history.checked ? '伪流式（使用历史上下文，支持回退）' : '非流式（不使用历史上下文）');
+              const rb = cfg_history_rollback_strategy.value;
+              const rv = cfg_history_rollback_value.value;
+              if (rb === 'none') {
+                add_log('CFG', '未启用回退');
+              } else if (rb === 'ratio') {
+                add_log('CFG', `按比例回退，回退比例为 ${rv}`);
+              } else if (rb === 'chars') {
+                add_log('CFG', `按字符数回退，回退数量为 ${rv} 字符`);
+              } else if (rb === 'words') {
+                add_log('CFG', `按词数回退，回退数量为 ${rv} 词（英文按空格，中文按结巴）`);
+              } else if (rb === 'tokens') {
+                add_log('CFG', `按 token 数回退，回退数量为 ${rv} token`);
+              } else {
+                add_log('CFG', `回退策略 ${rb}，参数 ${rv}`);
+              }
+              add_log('CFG', cfg_turn_detection.value === 'server_vad' ? '说话检测使用 VAD' : '说话检测不使用 VAD');
+              setTimeout(() => resolve(), 200);
+            }
+          };
+        });
+        await ready_promise;
+
+        // 创建文件上传的 session block，放入 active_area
+        session_counter++;
+        const file_block = document.createElement('div');
+        file_block.className = 'session-block active';
+        const file_header = document.createElement('div');
+        file_header.className = 'session-block-header';
+        const now = new Date();
+        const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+        file_header.innerHTML = `${fname} <span style="color:var(--text-disabled);margin-left:8px">${duration_sec.toFixed(1)}s</span> ${file_session_id || '#' + session_counter}`;
+        current_turn_langs = [];
+        attach_lang_tag(file_header);
+        file_block.appendChild(file_header);
+
+        ui_active_area.innerHTML = '';
+        ui_active_area.appendChild(file_block);
+        ui_active_area.appendChild(ui_cursor);
+
+        current_turn_div = document.createElement('div');
+        current_turn_div.className = 'turn-line';
+        current_turn_text = "";
+        current_turn_node = document.createTextNode("");
+        current_turn_div.appendChild(current_turn_node);
+        file_block.appendChild(current_turn_div);
+        ui_cursor.style.display = 'inline-block';
+        current_turn_div.appendChild(ui_cursor);
+
+        let file_final_transcript = "";
+        const completed_event = new Promise((resolve) => {
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'conversation.item.input_audio_transcription.delta') {
+              const cursor = data.cursor !== undefined ? data.cursor : current_turn_text.length;
+              const delta = data.delta || "";
+              current_turn_text = current_turn_text.slice(0, cursor) + delta;
+              if (current_turn_node) current_turn_node.textContent = current_turn_text;
+              note_detected_language(data.language);
+              ui_active_area.scrollIntoView({ block: 'end' });
+            } else if (data.type === 'conversation.item.input_audio_transcription.completed') {
+              if (data.transcript !== undefined && current_turn_node) {
+                current_turn_text = data.transcript;
+                current_turn_node.textContent = current_turn_text;
+              }
+              note_detected_language(data.language);
+              file_final_transcript = data.transcript || current_turn_text;
+              const completedLang = data.language ? ` [lang=${data.language}]` : '';
+              add_log('RECV', 'completed', `"${file_final_transcript.slice(0, 60)}"${completedLang}`);
+            } else if (data.type === 'response.done') {
+              resolve();
+            }
+          };
+        });
+
+        const send_t0 = performance.now();
+        for (let i = 0; i < packets.length; i++) {
+          ws.send(packets[i].buffer);
+
+          if ((i + 1) % Math.max(1, Math.floor(packets.length / 5)) === 0 || i === packets.length - 1) {
+            const pkt_time = (i + 1) * PACKET_MS / 1000;
+            add_log('SEND', 'audio', `${i+1}/${packets.length} (${pkt_time.toFixed(1)}s/${duration_sec.toFixed(1)}s)`);
+            ui_upload_button.innerText = `${Math.round((i+1)/packets.length*100)}%`;
+          }
+
+          const target_time = (i + 1) * PACKET_MS;
+          const elapsed = performance.now() - send_t0;
+          const wait = target_time - elapsed;
+          if (wait > 0) {
+            await new Promise(r => setTimeout(r, wait));
+          }
+        }
+
+        ws.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+        const send_cost = ((performance.now() - send_t0) / 1000).toFixed(2);
+        add_log('SEND', 'commit', `${packets.length} pkts (${send_cost}s)`);
+        ui_upload_button.innerText = 'WAITING...';
+
+        await Promise.race([
+          completed_event,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('等待结果超时')), 120000)),
+        ]);
+
+        ui_cursor.style.display = 'none';
+        if (current_turn_div) {
+          const check = document.createElement('span');
+          check.className = 'turn-check';
+          check.textContent = ' \u2713';
+          current_turn_div.appendChild(check);
+          if (current_turn_div.contains(ui_cursor)) {
+            current_turn_div.removeChild(ui_cursor);
+          }
+        }
+        // 上传完成：移入历史区
+        file_block.classList.remove('active');
+        ui_history_area.insertBefore(file_block, ui_history_area.firstChild);
+        ui_history_label.style.display = '';
+        ui_active_area.innerHTML = '';
+        current_turn_text = "";
+        current_turn_node = null;
+        current_turn_div = null;
+
+        add_log('SYS', `完成: "${(file_final_transcript || '').slice(0, 80)}"`);
+        ws.close();
+
+      } catch (err) {
+        add_log('ERR', '文件上传失败', err.message);
+        update_ui_status('error', 'UPLOAD FAILED');
+      } finally {
+        reset_upload_ui();
+      }
+    }
+
+    function reset_upload_ui() {
+      is_file_uploading = false;
+      ui_upload_button.innerText = 'UPLOAD';
+      ui_upload_button.classList.remove('is-sending');
+      ui_upload_button.disabled = false;
+      ui_button.disabled = false;
+      ui_button.style.opacity = '';
+      update_ui_status('active', 'READY');
+    }
+  </script>
+</body>
+</html>
